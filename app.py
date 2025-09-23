@@ -1259,19 +1259,22 @@ def servir_imagem(filename):
         print(f"❌ Erro ao servir imagem {filename}: {e}")
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Função de entrada para Vercel
-def handler(request, response=None):
-    """Handler principal para Vercel."""
-    if response is None:
-        # Para compatibilidade com diferentes versões
-        return app(request.environ, lambda status, headers: None)
+# Função de entrada para Vercel (WSGI handler)
+def application(environ, start_response):
+    """Handler WSGI para Vercel."""
+    return app(environ, start_response)
+
+# Função adicional para compatibilidade
+def handler(request):
+    """Handler alternativo para Vercel."""
     return app
 
 # Para desenvolvimento local
 if __name__ == '__main__':
-    # Garantir que as pastas necessárias existam
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    os.makedirs(os.path.join(BASE_PATH, 'resultados'), exist_ok=True)
+    # Garantir que as pastas necessárias existam apenas em desenvolvimento
+    if 'VERCEL' not in os.environ:
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        os.makedirs(os.path.join(BASE_PATH, 'resultados'), exist_ok=True)
     
     print("🚀 Iniciando Interface Web do Analisador de Avarias")
     print("📱 Acesse: http://localhost:5000")

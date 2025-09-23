@@ -1,0 +1,77 @@
+# Arquivos e pastas que devem ser ignorados no deploy da Vercel
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Ambiente virtual
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Arquivos de desenvolvimento local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Pasta de resultados (será criada dinamicamente)
+resultados/
+
+# Imagens de exemplo muito grandes
+imagens_para_analisar/*.jpg
+imagens_para_analisar/*.jpeg
+imagens_para_analisar/*.png
+imagens_para_analisar/*.gif
+
+# Manter apenas alguns arquivos de exemplo
+!imagens_para_analisar/exemplo_*.jpg
+!imagens_para_analisar/README.md
+
+# Backups
+*.bak
+backup_*
+
+# Arquivos temporários
+tmp/
+temp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docs desnecessários
+docs/README_VERCEL.md

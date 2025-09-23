@@ -185,7 +185,6 @@ env/
 pipenv.lock
 
 # Configuration files with sensitive data
-config.json
 *.key
 *.pem
 *.p12
