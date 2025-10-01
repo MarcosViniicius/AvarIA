@@ -24,7 +24,7 @@ endblock %} {% block content %}
               Arraste arquivos aqui ou clique para selecionar
             </h5>
             <p class="text-muted mb-3">
-              Formatos suportados: <strong>JPG, PNG, TXT</strong><br />
+              Formatos suportados: <strong>JPG, PNG, TXT, ZIP, RAR, 7Z, TAR, GZ, BZ2</strong><br />
               Tamanho máximo: <strong>50MB por arquivo</strong>
             </p>
             <button type="button" id="selectFilesBtn" class="btn btn-primary">
@@ -49,7 +49,7 @@ endblock %} {% block content %}
           type="file"
           id="fileInput"
           multiple
-          accept=".jpg,.jpeg,.png,.txt"
+          accept=".jpg,.jpeg,.png,.txt,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.tar.bz2,.gz,.bz2"
           style="display: none"
         />
 
@@ -101,12 +101,12 @@ endblock %} {% block content %}
             </ul>
           </div>
           <div class="col-md-6">
-            <h6><i class="bi bi-file-text me-2 text-info"></i>Mensagens</h6>
+            <h6><i class="bi bi-file-text me-2 text-info"></i>Arquivos</h6>
             <ul class="list-unstyled text-muted">
               <li>• Arquivo TXT com conversas do WhatsApp</li>
-              <li>• Inclua contexto sobre os produtos</li>
+              <li>• Arquivos compactados (ZIP, RAR, 7Z, etc.)</li>
               <li>• Mantenha a formatação original</li>
-              <li>• Um arquivo por sessão de upload</li>
+              <li>• Múltiplos arquivos por sessão</li>
             </ul>
           </div>
         </div>
@@ -222,17 +222,38 @@ endblock %} {% block content %}
       const validFiles = files.filter((file) => {
         const validTypes = [
           "image/jpeg",
-          "image/jpg",
+          "image/jpg", 
           "image/png",
           "text/plain",
+          "application/zip",
+          "application/x-zip-compressed",
+          "application/x-rar-compressed",
+          "application/x-7z-compressed",
+          "application/x-tar",
+          "application/gzip",
+          "application/x-gzip",
+          "application/x-bzip2"
         ];
-        const validExtensions = [".jpg", ".jpeg", ".png", ".txt"];
-        const extension = file.name
-          .toLowerCase()
-          .substring(file.name.lastIndexOf("."));
+        const validExtensions = [
+          ".jpg", ".jpeg", ".png", ".txt",
+          ".zip", ".rar", ".7z", ".tar", 
+          ".tar.gz", ".tgz", ".tar.bz2", 
+          ".gz", ".bz2"
+        ];
+        
+        const fileName = file.name.toLowerCase();
+        const extension = fileName.substring(fileName.lastIndexOf("."));
+        
+        // Verificar extensões compostas
+        const hasValidExtension = validExtensions.some(ext => {
+          if (ext.includes('.')) {
+            return fileName.endsWith(ext);
+          }
+          return extension === ext;
+        });
 
         return (
-          validTypes.includes(file.type) || validExtensions.includes(extension)
+          validTypes.includes(file.type) || hasValidExtension
         );
       });
 
@@ -284,7 +305,8 @@ endblock %} {% block content %}
     }
 
     function getFileIcon(type, name) {
-      const extension = name.toLowerCase().substring(name.lastIndexOf("."));
+      const fileName = name.toLowerCase();
+      const extension = fileName.substring(fileName.lastIndexOf("."));
 
       if (
         type.startsWith("image/") ||
@@ -293,6 +315,24 @@ endblock %} {% block content %}
         return "bi bi-image text-primary";
       } else if (type === "text/plain" || extension === ".txt") {
         return "bi bi-file-text text-info";
+      } else if (
+        fileName.endsWith(".zip") ||
+        fileName.endsWith(".rar") ||
+        fileName.endsWith(".7z") ||
+        fileName.endsWith(".tar") ||
+        fileName.endsWith(".tar.gz") ||
+        fileName.endsWith(".tgz") ||
+        fileName.endsWith(".tar.bz2") ||
+        fileName.endsWith(".gz") ||
+        fileName.endsWith(".bz2") ||
+        type.includes("zip") ||
+        type.includes("rar") ||
+        type.includes("7z") ||
+        type.includes("tar") ||
+        type.includes("gzip") ||
+        type.includes("bzip")
+      ) {
+        return "bi bi-file-zip text-warning";
       }
       return "bi bi-file text-secondary";
     }

@@ -20,5 +20,9 @@ tqdm==4.66.1
 # Utilitários
 python-dotenv==1.0.0
 
+# Extração de arquivos comprimidos
+py7zr==0.21.0
+rarfile==4.1
+
 # Compatibilidade Vercel - versões específicas para estabilidade
 gunicorn==21.2.0
