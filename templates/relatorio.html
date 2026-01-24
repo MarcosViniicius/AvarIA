@@ -84,8 +84,10 @@ endblock %} {% block head %}
               <i class="bi bi-exclamation-triangle text-danger me-2"></i>
               {% elif 'Uso Interno' in sheet_name %}
               <i class="bi bi-building text-info me-2"></i>
-              {% else %}
+              {% elif 'Erros' in sheet_name or 'Erro' in sheet_name %}
               <i class="bi bi-x-circle text-warning me-2"></i>
+              {% else %}
+              <i class="bi bi-file-text text-secondary me-2"></i>
               {% endif %} {{ sheet_name }} ({{ sheet_data.total }})
             </button>
           </li>
@@ -117,6 +119,17 @@ endblock %} {% block head %}
               </div>
               <div class="col-md-6 text-end">
                 <div class="btn-group" role="group">
+                  <!-- Botão específico de reanálise para aba de erros -->
+                  {% if 'Erros' in sheet_name or 'Erro' in sheet_name %}
+                  <button
+                    type="button"
+                    class="btn btn-warning btn-sm me-2"
+                    id="btnReanalisarErros"
+                    title="Reanalisar apenas os itens com erro"
+                  >
+                    <i class="bi bi-arrow-clockwise me-1"></i> Reanalisar Erros
+                  </button>
+                  {% endif %}
                   <button
                     type="button"
                     class="btn btn-outline-secondary btn-sm export-btn"
@@ -229,6 +242,79 @@ endblock %} {% block head %}
   {% endif %}
 </div>
 
+<!-- Modal de Reanálise -->
+<div
+  class="modal fade"
+  id="reanaliseModal"
+  tabindex="-1"
+  aria-labelledby="reanaliseModalLabel"
+  aria-hidden="true"
+  data-bs-backdrop="static"
+  data-bs-keyboard="false"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title" id="reanaliseModalLabel">
+          <i class="bi bi-arrow-clockwise me-2"></i>Reanalisando Erros
+        </h5>
+      </div>
+      <div class="modal-body">
+        <div class="text-center mb-3">
+          <div class="spinner-border text-warning" role="status">
+            <span class="visually-hidden">Processando...</span>
+          </div>
+        </div>
+        <div class="progress mb-3" style="height: 25px;">
+          <div
+            class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+            role="progressbar"
+            id="reanaliseProgressBar"
+            style="width: 0%"
+            aria-valuenow="0"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            0%
+          </div>
+        </div>
+        <p class="text-center mb-2">
+          <strong id="reanaliseStatus">Iniciando reanálise...</strong>
+        </p>
+        <p class="text-center text-muted small mb-0" id="reanaliseDetalhes">
+          Processando itens com erro...
+        </p>
+        <div id="reanaliseResultado" class="mt-3 d-none">
+          <div class="alert alert-info">
+            <h6 class="alert-heading">
+              <i class="bi bi-info-circle me-2"></i>Resultado da Reanálise
+            </h6>
+            <hr />
+            <div id="reanaliseResultadoConteudo"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          id="btnFecharReanalise"
+          disabled
+        >
+          Fechar
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary d-none"
+          id="btnAtualizarRelatorio"
+        >
+          <i class="bi bi-arrow-clockwise me-1"></i>Atualizar Relatório
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal de Visualização de Imagem -->
 <div
   class="modal fade"
@@ -334,4 +420,164 @@ endblock %} {% block head %}
   src="{{ url_for('static', filename='js/relatorio.min.js') }}?v={{ range(1, 10000) | random }}"
   defer
 ></script>
+
+<!-- JavaScript para funcionalidade de reanálise de erros -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const btnReanalisar = document.getElementById('btnReanalisarErros');
+  const modalReanalise = new bootstrap.Modal(document.getElementById('reanaliseModal'));
+  const progressBar = document.getElementById('reanaliseProgressBar');
+  const statusElement = document.getElementById('reanaliseStatus');
+  const detalhesElement = document.getElementById('reanaliseDetalhes');
+  const resultadoDiv = document.getElementById('reanaliseResultado');
+  const resultadoConteudo = document.getElementById('reanaliseResultadoConteudo');
+  const btnFechar = document.getElementById('btnFecharReanalise');
+  const btnAtualizar = document.getElementById('btnAtualizarRelatorio');
+  
+  let progressInterval = null;
+  
+  // Event listener para botão de reanálise
+  if (btnReanalisar) {
+    btnReanalisar.addEventListener('click', function() {
+      iniciarReanalise();
+    });
+  }
+  
+  // Função para iniciar reanálise
+  async function iniciarReanalise() {
+    try {
+      // Resetar interface
+      progressBar.style.width = '0%';
+      progressBar.textContent = '0%';
+      statusElement.textContent = 'Iniciando reanálise...';
+      detalhesElement.textContent = 'Preparando para processar itens com erro...';
+      resultadoDiv.classList.add('d-none');
+      btnFechar.disabled = true;
+      btnAtualizar.classList.add('d-none');
+      
+      // Mostrar modal
+      modalReanalise.show();
+      
+      // Iniciar reanálise
+      const response = await fetch('/api/reanalisar_erros', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Erro ao iniciar reanálise');
+      }
+      
+      // Iniciar monitoramento de progresso
+      monitorarProgresso();
+      
+    } catch (error) {
+      console.error('Erro ao iniciar reanálise:', error);
+      statusElement.textContent = 'Erro ao iniciar reanálise';
+      detalhesElement.textContent = error.message;
+      btnFechar.disabled = false;
+    }
+  }
+  
+  // Função para monitorar progresso
+  function monitorarProgresso() {
+    progressInterval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/progresso_reanalise');
+        const data = await response.json();
+        
+        // Atualizar barra de progresso
+        const progresso = data.progresso || 0;
+        progressBar.style.width = progresso + '%';
+        progressBar.textContent = progresso + '%';
+        
+        // Atualizar status
+        statusElement.textContent = data.status || 'Processando...';
+        
+        // Atualizar detalhes (últimos logs)
+        if (data.logs && data.logs.length > 0) {
+          const ultimoLog = data.logs[data.logs.length - 1];
+          detalhesElement.textContent = ultimoLog;
+        }
+        
+        // Verificar se concluído
+        if (!data.ativo && progresso >= 100) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+          
+          // Mostrar resultado
+          if (data.resultado) {
+            mostrarResultado(data.resultado);
+          } else if (data.erro) {
+            mostrarErro(data.erro);
+          }
+          
+          btnFechar.disabled = false;
+          btnAtualizar.classList.remove('d-none');
+        }
+        
+      } catch (error) {
+        console.error('Erro ao monitorar progresso:', error);
+        clearInterval(progressInterval);
+        progressInterval = null;
+        btnFechar.disabled = false;
+      }
+    }, 2000); // Verificar a cada 2 segundos
+  }
+  
+  // Função para mostrar resultado
+  function mostrarResultado(resultado) {
+    resultadoDiv.classList.remove('d-none');
+    
+    const html = `
+      <p class="mb-2"><strong>Total de arquivos:</strong> ${resultado.total_arquivos || 0}</p>
+      <p class="mb-2 text-success"><strong>✅ Corrigidos:</strong> ${resultado.corrigidos || 0}</p>
+      <p class="mb-2 text-warning"><strong>⚠️ Ainda com erro:</strong> ${resultado.ainda_com_erro || 0}</p>
+      ${resultado.corrigidos > 0 ? '<p class="mt-3 mb-0"><em>Clique em "Atualizar Relatório" para ver as mudanças.</em></p>' : ''}
+    `;
+    
+    resultadoConteudo.innerHTML = html;
+    statusElement.textContent = 'Reanálise concluída!';
+    detalhesElement.textContent = `${resultado.corrigidos} itens foram corrigidos com sucesso.`;
+  }
+  
+  // Função para mostrar erro
+  function mostrarErro(erro) {
+    resultadoDiv.classList.remove('d-none');
+    resultadoConteudo.innerHTML = `
+      <div class="alert alert-danger mb-0">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <strong>Erro:</strong> ${erro}
+      </div>
+    `;
+    statusElement.textContent = 'Erro na reanálise';
+  }
+  
+  // Event listener para botão atualizar
+  btnAtualizar.addEventListener('click', function() {
+    window.location.reload();
+  });
+  
+  // Event listener para fechar modal
+  btnFechar.addEventListener('click', function() {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+    modalReanalise.hide();
+  });
+  
+  // Limpar interval quando modal é fechado
+  document.getElementById('reanaliseModal').addEventListener('hidden.bs.modal', function() {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+  });
+});
+</script>
 {% endblock %} {% endblock %}

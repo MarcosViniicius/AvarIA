@@ -816,5 +816,207 @@ def _processar_erro(
     )
 
 
+def reanalisar_erros(
+    diretorio_imagens: str = None,
+    arquivo_excel: str = None,
+    callback_progresso: callable = None
+) -> Dict[str, Any]:
+    """
+    Reanalisar apenas os itens que falharam na análise anterior.
+    
+    Esta função é isolada e não interfere no fluxo normal do sistema.
+    
+    Args:
+        diretorio_imagens: Diretório com as imagens. Se None, usa o padrão
+        arquivo_excel: Arquivo Excel com os erros. Se None, usa o padrão
+        callback_progresso: Função callback para reportar progresso
+    
+    Returns:
+        Dicionário com o resultado da reanálise
+    """
+    from src.gerenciador_erros import criar_gerenciador
+    
+    print("\n🔄 INICIANDO REANÁLISE DE ERROS")
+    print("=" * 60)
+    
+    # Usar valores padrão se não fornecidos
+    if diretorio_imagens is None:
+        diretorio_imagens = DIRETORIO_IMAGENS
+    if arquivo_excel is None:
+        arquivo_excel = ARQUIVO_SAIDA_EXCEL
+    
+    try:
+        # Criar gerenciador de erros
+        gerenciador = criar_gerenciador(arquivo_excel)
+        
+        # Obter lista de arquivos com erro
+        arquivos_com_erro = gerenciador.obter_arquivos_com_erro()
+        
+        if not arquivos_com_erro:
+            print("✅ Nenhum erro pendente para reanalisar")
+            return {
+                "sucesso": True,
+                "total_arquivos": 0,
+                "processados": 0,
+                "corrigidos": 0,
+                "ainda_com_erro": 0,
+                "detalhes": []
+            }
+        
+        print(f"📋 Encontrados {len(arquivos_com_erro)} arquivos com erro")
+        
+        # Configurar modelo
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        
+        # Carregar mensagens
+        mensagens_por_imagem = mapear_mensagens_para_imagens()
+        
+        # Preparar listas de resultados
+        itens_corrigidos = 0
+        ainda_com_erro = 0
+        detalhes_resultado = []
+        
+        # Processar cada arquivo com erro
+        for idx, nome_arquivo in enumerate(arquivos_com_erro, 1):
+            if callback_progresso:
+                callback_progresso({
+                    "atual": idx,
+                    "total": len(arquivos_com_erro),
+                    "arquivo": nome_arquivo
+                })
+            
+            print(f"\n[{idx}/{len(arquivos_com_erro)}] Reanalisando: {nome_arquivo}")
+            
+            caminho_imagem = os.path.join(diretorio_imagens, nome_arquivo)
+            
+            # Verificar se arquivo existe
+            if not os.path.exists(caminho_imagem):
+                print(f"   ⚠️ Arquivo não encontrado: {caminho_imagem}")
+                detalhes_resultado.append({
+                    "arquivo": nome_arquivo,
+                    "status": "falha",
+                    "motivo": "Arquivo não encontrado"
+                })
+                ainda_com_erro += 1
+                gerenciador.adicionar_ao_log_reanalise(
+                    nome_arquivo, "falha", "Arquivo não encontrado"
+                )
+                continue
+            
+            try:
+                # Processar como lote de 1 item
+                resultado, tokens = extrair_dados_de_lote(
+                    [caminho_imagem],
+                    model,
+                    mensagens_por_imagem
+                )
+                
+                dados = resultado.get(nome_arquivo)
+                
+                if dados and dados.get("tipo") != "Erro":
+                    # Sucesso na reanálise!
+                    print(f"   ✅ Corrigido com sucesso: {dados.get('tipo')}")
+                    
+                    # Processar resultado e adicionar ao Excel
+                    caminho_absoluto = os.path.abspath(caminho_imagem)
+                    msg_associada = mensagens_por_imagem.get(nome_arquivo, "")
+                    tipo = dados.get("tipo")
+                    
+                    novas_avarias = []
+                    novos_usos_internos = []
+                    novos_erros = []
+                    
+                    _processar_resultado_arquivo(
+                        nome_arquivo,
+                        resultado,
+                        mensagens_por_imagem,
+                        novas_avarias,
+                        novos_usos_internos,
+                        novos_erros,
+                    )
+                    
+                    # Salvar no Excel
+                    salvar_relatorio_excel(novas_avarias, novos_usos_internos, novos_erros)
+                    
+                    # Remover da lista de erros
+                    gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=True)
+                    
+                    itens_corrigidos += 1
+                    detalhes_resultado.append({
+                        "arquivo": nome_arquivo,
+                        "status": "sucesso",
+                        "tipo": tipo
+                    })
+                    
+                    gerenciador.adicionar_ao_log_reanalise(
+                        nome_arquivo, "sucesso", f"Tipo: {tipo}"
+                    )
+                    
+                else:
+                    # Ainda com erro
+                    erro_detalhes = dados.get("detalhes", "Erro desconhecido") if dados else "Sem resposta"
+                    print(f"   ❌ Ainda com erro: {erro_detalhes}")
+                    
+                    ainda_com_erro += 1
+                    detalhes_resultado.append({
+                        "arquivo": nome_arquivo,
+                        "status": "falha",
+                        "motivo": erro_detalhes
+                    })
+                    
+                    gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=False)
+                    gerenciador.adicionar_ao_log_reanalise(
+                        nome_arquivo, "falha", erro_detalhes
+                    )
+                
+                # Delay entre requisições
+                if idx < len(arquivos_com_erro):
+                    time.sleep(REQUEST_DELAY)
+                    
+            except Exception as e:
+                print(f"   ❌ Erro ao reanalisar: {e}")
+                ainda_com_erro += 1
+                detalhes_resultado.append({
+                    "arquivo": nome_arquivo,
+                    "status": "falha",
+                    "motivo": str(e)
+                })
+                gerenciador.adicionar_ao_log_reanalise(
+                    nome_arquivo, "falha", str(e)
+                )
+        
+        # Resumo final
+        print("\n" + "=" * 60)
+        print("✅ REANÁLISE CONCLUÍDA")
+        print(f"   📊 Total de arquivos: {len(arquivos_com_erro)}")
+        print(f"   ✅ Corrigidos: {itens_corrigidos}")
+        print(f"   ❌ Ainda com erro: {ainda_com_erro}")
+        print("=" * 60)
+        
+        return {
+            "sucesso": True,
+            "total_arquivos": len(arquivos_com_erro),
+            "processados": len(arquivos_com_erro),
+            "corrigidos": itens_corrigidos,
+            "ainda_com_erro": ainda_com_erro,
+            "detalhes": detalhes_resultado
+        }
+        
+    except Exception as e:
+        print(f"\n❌ Erro crítico na reanálise: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "sucesso": False,
+            "erro": str(e),
+            "total_arquivos": 0,
+            "processados": 0,
+            "corrigidos": 0,
+            "ainda_com_erro": 0,
+            "detalhes": []
+        }
+
+
 if __name__ == "__main__":
     main()
