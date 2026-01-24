@@ -5,8 +5,19 @@ import gzip
 import shutil
 import logging
 from pathlib import Path
-import py7zr
-import rarfile
+# py7zr é opcional - se não estiver disponível, arquivos .7z não serão suportados
+try:
+    import py7zr
+    PY7ZR_DISPONIVEL = True
+except ImportError:
+    PY7ZR_DISPONIVEL = False
+    
+try:
+    import rarfile
+    RARFILE_DISPONIVEL = True
+except ImportError:
+    RARFILE_DISPONIVEL = False
+
 import tempfile
 
 # Configurar logging
@@ -31,8 +42,6 @@ class ExtratorArquivos:
         # Formatos suportados e suas respectivas funções de extração
         self.formatos_suportados = {
             ".zip": self._extrair_zip,
-            ".rar": self._extrair_rar,
-            ".7z": self._extrair_7z,
             ".tar": self._extrair_tar,
             ".tar.gz": self._extrair_tar_gz,
             ".tgz": self._extrair_tar_gz,
@@ -40,21 +49,29 @@ class ExtratorArquivos:
             ".gz": self._extrair_gz,
             ".bz2": self._extrair_bz2,
         }
+        
+        # Adicionar suporte a RAR se disponível
+        if RARFILE_DISPONIVEL:
+            self.formatos_suportados[".rar"] = self._extrair_rar
+        
+        # Adicionar suporte a 7Z se disponível
+        if PY7ZR_DISPONIVEL:
+            self.formatos_suportados[".7z"] = self._extrair_7z
 
     def _verificar_dependencias(self):
         """Verifica se as dependências necessárias estão instaladas."""
-        dependencias = {"py7zr": "py7zr", "rarfile": "rarfile"}
+        dependencias_info = []
+        
+        if not PY7ZR_DISPONIVEL:
+            dependencias_info.append("py7zr (para arquivos .7z)")
+        
+        if not RARFILE_DISPONIVEL:
+            dependencias_info.append("rarfile (para arquivos .rar)")
 
-        faltando = []
-        for nome, pacote in dependencias.items():
-            try:
-                __import__(nome)
-            except ImportError:
-                faltando.append(pacote)
-
-        if faltando:
-            logger.warning(f"Dependências faltando: {', '.join(faltando)}")
-            logger.info("Instale com: pip install " + " ".join(faltando))
+        if dependencias_info:
+            logger.warning(f"Dependências opcionais não instaladas: {', '.join(dependencias_info)}")
+            logger.info("Instale com: pip install py7zr rarfile")
+            logger.info("Formatos suportados atualmente: " + ", ".join(self.formatos_suportados.keys()))
 
     def _extrair_zip(self, arquivo, pasta_destino):
         """Extrai arquivos ZIP."""
@@ -68,6 +85,9 @@ class ExtratorArquivos:
 
     def _extrair_rar(self, arquivo, pasta_destino):
         """Extrai arquivos RAR."""
+        if not RARFILE_DISPONIVEL:
+            logger.error(f"rarfile não está instalado. Não é possível extrair {arquivo}")
+            return False
         try:
             with rarfile.RarFile(arquivo, "r") as rar_ref:
                 rar_ref.extractall(pasta_destino)
@@ -78,6 +98,9 @@ class ExtratorArquivos:
 
     def _extrair_7z(self, arquivo, pasta_destino):
         """Extrai arquivos 7Z."""
+        if not PY7ZR_DISPONIVEL:
+            logger.error(f"py7zr não está instalado. Não é possível extrair {arquivo}")
+            return False
         try:
             with py7zr.SevenZipFile(arquivo, mode="r") as z:
                 z.extractall(path=pasta_destino)

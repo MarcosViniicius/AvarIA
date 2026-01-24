@@ -95,6 +95,7 @@ os.makedirs(os.path.join(BASE_PATH, "logs"), exist_ok=True)
 
 # Variáveis globais para controle de processamento
 processamento_ativo = False
+processamento_cancelado = False
 progresso_atual = {"progresso": 0, "status": "Aguardando", "logs": []}
 
 
@@ -224,20 +225,9 @@ def verificar_e_corrigir_configuracao():
     if not api_key or api_key.strip() == "":
         return False, "Chave da API Gemini não configurada"
     
-    # Verificar se o arquivo de configuração do script está atualizado
-    script_config_path = os.path.join(BASE_PATH, "src", "config.json")
-    
     try:
-        # Criar ou atualizar config.json na pasta src para o script
-        with open(script_config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-        
-        # Também criar na raiz para compatibilidade
-        root_config_path = os.path.join(BASE_PATH, "config.json")
-        with open(root_config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-            
-        return True, f"Configuração sincronizada (API Key: {api_key[:8]}...)"
+        # Configuração já está em config/config.json (arquivo único)
+        return True, f"Configuração válida (API Key: {api_key[:8]}...)"
         
     except Exception as e:
         return False, f"Erro ao sincronizar configuração: {e}"
@@ -494,15 +484,24 @@ def extrair_arquivos_comprimidos(pasta_imagens, logs_callback=None):
 
 def processar_em_background():
     """Executa o processamento em background."""
-    global processamento_ativo, progresso_atual
+    global processamento_ativo, progresso_atual, processamento_cancelado
 
     try:
         processamento_ativo = True
+        processamento_cancelado = False
         progresso_atual = {
             "progresso": 0,
             "status": "Iniciando processamento...",
             "logs": [],
         }
+
+        # Limpar arquivo de cancelamento se existir
+        cancel_file = os.path.join(BASE_PATH, ".cancel_processing")
+        if os.path.exists(cancel_file):
+            try:
+                os.remove(cancel_file)
+            except:
+                pass
 
         # Log inicial
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -533,6 +532,12 @@ def processar_em_background():
             progresso_atual["logs"].append(
                 "⚙️ Configure a API Key na página de Configurações"
             )
+            return
+
+        # Verificar se foi cancelado
+        if processamento_cancelado:
+            progresso_atual["status"] = "❌ Processamento cancelado pelo usuário"
+            progresso_atual["logs"].append("⚠️ Processamento cancelado")
             return
 
         # Extrair arquivos comprimidos se existirem
@@ -600,6 +605,12 @@ def processar_em_background():
             progresso_atual["logs"].append("✅ Todas as imagens já foram processadas!")
             return
 
+        # Verificar se foi cancelado antes de iniciar processamento
+        if processamento_cancelado:
+            progresso_atual["status"] = "❌ Processamento cancelado pelo usuário"
+            progresso_atual["logs"].append("⚠️ Processamento cancelado antes de iniciar análise")
+            return
+
         # Executar processamento principal
         progresso_atual["progresso"] = 30
         progresso_atual["status"] = "🤖 Iniciando análise com IA Gemini..."
@@ -646,8 +657,12 @@ def processar_em_background():
 
     finally:
         processamento_ativo = False
+        processamento_cancelado = False
         timestamp = datetime.now().strftime("%H:%M:%S")
-        progresso_atual["logs"].append(f"🏁 Processamento finalizado às {timestamp}")
+        
+        # Adicionar mensagem de finalização apenas se não foi adicionada antes
+        if progresso_atual["logs"] and not progresso_atual["logs"][-1].startswith("🏁"):
+            progresso_atual["logs"].append(f"🏁 Processamento finalizado às {timestamp}")
 
 
 @app.route("/")
@@ -754,6 +769,29 @@ def iniciar_processamento():
     thread.start()
 
     return jsonify({"success": True, "message": "Processamento iniciado!"})
+
+
+@app.route("/cancelar", methods=["POST"])
+def cancelar_processamento():
+    """Cancela o processamento em andamento."""
+    global processamento_cancelado, progresso_atual
+    
+    if not processamento_ativo:
+        return jsonify({"success": False, "message": "Nenhum processamento em andamento"})
+    
+    processamento_cancelado = True
+    progresso_atual["logs"].append("⚠️ Solicitação de cancelamento recebida...")
+    progresso_atual["status"] = "⚠️ Cancelando processamento..."
+    
+    # Criar arquivo de sinalização para o script extrair-dados.py
+    try:
+        cancel_file = os.path.join(BASE_PATH, ".cancel_processing")
+        with open(cancel_file, "w") as f:
+            f.write(datetime.now().isoformat())
+    except Exception as e:
+        print(f"Erro ao criar arquivo de cancelamento: {e}")
+    
+    return jsonify({"success": True, "message": "Processamento cancelado!"})
 
 
 @app.route("/status")
@@ -1735,13 +1773,12 @@ def limpar_dados():
 def download_config():
     """Download das configurações como backup"""
     try:
-        config_path = os.path.join(app.root_path, "config.json")
-        if not os.path.exists(config_path):
+        if not os.path.exists(CONFIG_FILE):
             flash("Arquivo de configuração não encontrado.", "warning")
             return redirect(url_for("configuracoes"))
 
         return send_file(
-            config_path, as_attachment=True, download_name="config_backup.json"
+            CONFIG_FILE, as_attachment=True, download_name="config_backup.json"
         )
     except Exception as e:
         flash(f"Erro ao fazer download: {str(e)}", "error")
@@ -1908,35 +1945,29 @@ def testar_configuracao():
         # Verificar arquivos de configuração existentes
         arquivos_config = []
         
-        caminhos_config = [
-            CONFIG_FILE,  # config/config.json
-            os.path.join(BASE_PATH, "config.json"),  # config.json na raiz
-            os.path.join(BASE_PATH, "src", "config.json"),  # src/config.json
-        ]
-        
-        for caminho in caminhos_config:
-            if os.path.exists(caminho):
-                try:
-                    with open(caminho, "r", encoding="utf-8") as f:
-                        config_arquivo = json.load(f)
-                        api_key_arquivo = config_arquivo.get("api", {}).get("gemini_api_key", "")
-                        arquivos_config.append({
-                            "caminho": caminho,
-                            "existe": True,
-                            "api_key_definida": bool(api_key_arquivo and api_key_arquivo.strip()),
-                            "api_key_preview": api_key_arquivo[:8] + "..." if api_key_arquivo else ""
-                        })
-                except Exception as e:
+        # Verificar apenas o arquivo único de configuração
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    config_arquivo = json.load(f)
+                    api_key_arquivo = config_arquivo.get("api", {}).get("gemini_api_key", "")
                     arquivos_config.append({
-                        "caminho": caminho,
+                        "caminho": CONFIG_FILE,
                         "existe": True,
-                        "erro": str(e)
+                        "api_key_definida": bool(api_key_arquivo and api_key_arquivo.strip()),
+                        "api_key_preview": api_key_arquivo[:8] + "..." if api_key_arquivo else ""
                     })
-            else:
+            except Exception as e:
                 arquivos_config.append({
-                    "caminho": caminho,
-                    "existe": False
+                    "caminho": CONFIG_FILE,
+                    "existe": True,
+                    "erro": str(e)
                 })
+        else:
+            arquivos_config.append({
+                "caminho": CONFIG_FILE,
+                "existe": False
+            })
         
         # Sincronizar configuração
         config_sync_ok, config_sync_msg = verificar_e_corrigir_configuracao()

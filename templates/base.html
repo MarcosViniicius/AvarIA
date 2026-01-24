@@ -258,26 +258,34 @@
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <small class="text-muted me-auto">
+          <div class="modal-footer d-flex justify-content-between">
+            <small class="text-muted">
               <i class="bi bi-info-circle me-1"></i>
-              O processamento pode levar alguns minutos dependendo da quantidade
-              de imagens
+              O processamento pode levar alguns minutos
             </small>
-            <button
-              id="viewLogsBtn"
-              type="button"
-              class="btn btn-outline-secondary btn-sm"
-            >
-              <i class="bi bi-terminal"></i> Ver Logs Completos
-            </button>
-            <button
-              id="viewRelatorioBtn"
-              type="button"
-              class="btn btn-outline-secondary btn-sm"
-            >
-              <i class="bi bi-journal-text"></i> Ver Relatório
-            </button>
+            <div>
+              <button
+                id="cancelarBtn"
+                type="button"
+                class="btn btn-outline-danger btn-sm me-2"
+              >
+                <i class="bi bi-x-circle"></i> Cancelar
+              </button>
+              <button
+                id="viewLogsBtn"
+                type="button"
+                class="btn btn-outline-secondary btn-sm me-2"
+              >
+                <i class="bi bi-terminal"></i> Logs
+              </button>
+              <button
+                id="viewRelatorioBtn"
+                type="button"
+                class="btn btn-outline-primary btn-sm"
+              >
+                <i class="bi bi-journal-text"></i> Relatório
+              </button>
+            </div>
           </div>
         </div>
       </div>

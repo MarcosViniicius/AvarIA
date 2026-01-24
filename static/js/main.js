@@ -245,6 +245,34 @@ function monitorarProgresso() {
         window.open("/logs", "_self");
       });
     }
+
+    // Configurar botão de cancelar
+    const cancelarBtn = document.getElementById("cancelarBtn");
+    if (cancelarBtn) {
+      // Remover event listeners antigos
+      const newCancelarBtn = cancelarBtn.cloneNode(true);
+      cancelarBtn.parentNode.replaceChild(newCancelarBtn, cancelarBtn);
+      
+      newCancelarBtn.addEventListener("click", function() {
+        if (confirm("Tem certeza que deseja cancelar o processamento?")) {
+          this.disabled = true;
+          this.innerHTML = '<i class="bi bi-hourglass-split spin"></i> Cancelando...';
+          
+          fetch("/cancelar", { method: "POST" })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                console.log("Processamento cancelado com sucesso");
+              }
+            })
+            .catch((error) => {
+              console.error("Erro ao cancelar:", error);
+              this.disabled = false;
+              this.innerHTML = '<i class="bi bi-x-circle"></i> Cancelar';
+            });
+        }
+      });
+    }
   }
   const viewRelatorioBtn = document.getElementById("viewRelatorioBtn");
   if (viewRelatorioBtn) {
@@ -270,7 +298,8 @@ APP_STATE.progressTimer = setInterval(() => {
       if (
         data.progresso >= 100 ||
         data.status.includes("Erro") ||
-        data.status.includes("concluído")
+        data.status.includes("concluído") ||
+        data.status.includes("cancelado")
       ) {
         finalizarMonitoramento(data);
       }
@@ -303,9 +332,25 @@ function updateProgressUI(data) {
   const statsImagens = document.getElementById("statsImagens");
   const statsTempoDecorrido = document.getElementById("statsTempoDecorrido");
   const statsETA = document.getElementById("statsETA");
+  const cancelarBtn = document.getElementById("cancelarBtn");
 
   const progresso = data.progresso || 0;
   const status = data.status || "Processando...";
+
+  // Controlar visibilidade do botão de cancelar
+  if (cancelarBtn) {
+    // Esconder apenas quando finalizado ou cancelado
+    if (progresso >= 100 || status.includes("cancelado") || status.includes("Erro") || status.includes("concluído")) {
+      cancelarBtn.style.display = "none";
+      cancelarBtn.disabled = false;
+    } else {
+      // Mostrar durante processamento
+      cancelarBtn.style.display = "inline-block";
+      if (!cancelarBtn.innerHTML.includes("Cancelando")) {
+        cancelarBtn.innerHTML = '<i class="bi bi-x-circle"></i> Cancelar';
+      }
+    }
+  }
 
   // Atualizar barra de progresso
   if (progressBar) {
@@ -443,6 +488,12 @@ function finalizarMonitoramento(data) {
     APP_STATE.progressTimer = null;
   }
 
+  // Esconder botão de cancelar quando terminar
+  const cancelarBtn = document.getElementById("cancelarBtn");
+  if (cancelarBtn) {
+    cancelarBtn.style.display = "none";
+  }
+
   // Aguardar um momento antes de fechar o modal
   setTimeout(
     () => {
@@ -453,11 +504,14 @@ function finalizarMonitoramento(data) {
 
       // Mostrar resultado final
       const isSuccess = data.progresso >= 100 && !data.status.includes("Erro");
-      const message = isSuccess
+      const isCanceled = data.status.includes("cancelado");
+      const message = isCanceled
+        ? "Processamento cancelado pelo usuário"
+        : isSuccess
         ? "Processamento concluído com sucesso!"
         : `Processamento finalizado com problemas: ${data.status}`;
 
-      showAlert(isSuccess ? "success" : "warning", message);
+      showAlert(isCanceled ? "warning" : isSuccess ? "success" : "warning", message);
 
       // Atualizar página se necessário
       if (isSuccess && typeof atualizarStats === "function") {

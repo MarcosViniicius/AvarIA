@@ -1,28 +1,23 @@
-# Dependências do Analisador de Avarias - Interface Web (Vercel Compatible)
+# Dependências do Analisador de Avarias - Interface Web
 
 # Framework Web
-Flask==3.0.0
-Werkzeug==3.0.1
+Flask>=3.0.0
+Werkzeug>=3.0.1
 
 # Processamento de dados
-pandas==2.1.4
-openpyxl==3.1.2
+pandas>=2.2.3
+openpyxl>=3.1.2
 
 # Manipulação de imagens
-Pillow==10.2.0
+Pillow>=10.4.0
 
 # Google Gemini AI
-google-generativeai==0.4.0
+google-generativeai>=0.4.0
 
 # Barra de progresso
 tqdm==4.66.1
 
 # Utilitários
-python-dotenv==1.0.0
+python-dotenv>=1.0.0
 
-# Extração de arquivos comprimidos
-py7zr==0.21.0
-rarfile==4.1
-
-# Compatibilidade Vercel - versões específicas para estabilidade
-gunicorn==21.2.0
+rarfile>=4.1

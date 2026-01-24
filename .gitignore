@@ -169,6 +169,9 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# Arquivos de controle de processamento
+.cancel_processing
+
 # =============================================================================
 # ENVIRONMENT & CONFIGURATION
 # =============================================================================

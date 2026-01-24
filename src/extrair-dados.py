@@ -51,22 +51,12 @@ def carregar_configuracao():
     }
 
     try:
-        # Tentar diferentes caminhos para o arquivo de configuração
-        caminhos_possiveis = [
-            CONFIG_FILE,  # config/config.json
-            "config.json",  # config.json na raiz
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.json"),  # caminho absoluto
-        ]
+        # Usar sempre o caminho absoluto para config/config.json
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.json")
         
-        config_encontrado = None
-        for caminho in caminhos_possiveis:
-            if os.path.exists(caminho):
-                config_encontrado = caminho
-                print(f"📄 Arquivo de configuração encontrado: {caminho}")
-                break
-        
-        if config_encontrado:
-            with open(config_encontrado, "r", encoding="utf-8") as f:
+        if os.path.exists(config_path):
+            print(f"📄 Arquivo de configuração encontrado: {config_path}")
+            with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
                 
                 # Verificar se a API key foi definida
@@ -96,9 +86,10 @@ ARQUIVO_SAIDA_EXCEL = "resultados/Relatorio_Mestre_Produtos.xlsx"
 LOG_PROCESSADOS_FILE = "logs/log_mestre.txt"
 LOG_CONSUMO_FILE = "logs/log_consumo_tokens.txt"
 
-# Configurações de processamento
-TAMANHO_LOTE = 10
-MAX_WORKERS = 4
+# Configurações de processamento otimizadas para reduzir RPM/RPD (carregadas do config.json)
+TAMANHO_LOTE = CONFIG.get("processamento", {}).get("tamanho_lote", 5)
+MAX_WORKERS = CONFIG.get("processamento", {}).get("max_workers", 2)
+REQUEST_DELAY = CONFIG.get("processamento", {}).get("request_delay", 1.5)
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
 DEBUG_MODE = False
@@ -134,10 +125,10 @@ class ProcessingConfig:
             print(f"   - Arquivo de config usado: {CONFIG_FILE}")
             print("💡 Soluções:")
             print("   1. Verifique se o arquivo config/config.json existe")
-            print("   2. Configure sua API Key do Gemini nas configurações da aplicação")
+            print("   2. Configure sua API Key do Gemini na interface web (aba Configurações)")
             print("   3. Certifique-se de que a chave não está vazia")
             raise ValueError(
-                "Chave da API Gemini não foi definida corretamente. Configure nas Configurações da aplicação."
+                "Chave da API Gemini não configurada. Configure na interface web."
             )
 
         if TAMANHO_LOTE <= 0:
@@ -150,6 +141,18 @@ class ProcessingConfig:
 # ================================
 # UTILITÁRIOS E LOGS
 # ================================
+
+
+def verificar_cancelamento() -> bool:
+    """Verifica se o processamento foi cancelado."""
+    cancel_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cancel_processing")
+    if os.path.exists(cancel_file):
+        try:
+            os.remove(cancel_file)
+        except:
+            pass
+        return True
+    return False
 
 
 def carregar_logs() -> Set[str]:
@@ -579,6 +582,15 @@ def main() -> None:
     try:
         verificar_dependencias()
         config = ProcessingConfig()
+        
+        # Mostrar configurações de otimização
+        print(f"⚙️ Configurações de processamento:")
+        print(f"   • Tamanho do lote: {TAMANHO_LOTE} imagens/requisição")
+        print(f"   • Workers paralelos: {MAX_WORKERS}")
+        print(f"   • Delay entre requisições: {REQUEST_DELAY}s")
+        print(f"   • Modelo: {GEMINI_MODEL}")
+        print()
+        
         if not os.path.exists(DIRETORIO_IMAGENS):
             os.makedirs(DIRETORIO_IMAGENS)
             print(f"📁 Pasta '{DIRETORIO_IMAGENS}' criada.")
@@ -621,16 +633,24 @@ def main() -> None:
         print("\n🔄 Iniciando processamento com lógica de texto aprimorada...")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            future_to_lote = {
-                executor.submit(
+            future_to_lote = {}
+            for idx, lote in enumerate(lotes_de_imagens):
+                # Adicionar delay entre submissões para respeitar limites de RPM
+                if idx > 0:
+                    time.sleep(REQUEST_DELAY)
+                future_to_lote[executor.submit(
                     extrair_dados_de_lote, lote, model, mensagens_por_imagem
-                ): lote
-                for lote in lotes_de_imagens
-            }
+                )] = lote
             with tqdm(
                 total=len(imagens_para_processar), desc="Analisando", unit="img"
             ) as pbar:
                 for future in concurrent.futures.as_completed(future_to_lote):
+                    # Verificar se foi cancelado
+                    if verificar_cancelamento():
+                        print("\n⚠️ Processamento cancelado pelo usuário")
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        return
+                    
                     lote_processado_caminhos = future_to_lote[future]
                     lote_processado_nomes = [
                         os.path.basename(p) for p in lote_processado_caminhos
