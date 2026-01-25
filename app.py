@@ -98,6 +98,55 @@ processamento_ativo = False
 processamento_cancelado = False
 progresso_atual = {"progresso": 0, "status": "Aguardando", "logs": []}
 
+# Buffer de logs em tempo real
+logs_aplicacao_buffer = []
+
+# Sistema de captura de prints
+class LogCapture:
+    """Captura prints e redireciona para o buffer de logs."""
+    def __init__(self):
+        self.terminal = sys.stdout
+        self.log_buffer = logs_aplicacao_buffer
+        self._in_write = False  # Prevenir recursão
+        
+    def write(self, mensagem):
+        # Sempre escrever no terminal
+        self.terminal.write(mensagem)
+        self.terminal.flush()
+        
+        # Prevenir recursão infinita
+        if self._in_write:
+            return
+            
+        try:
+            self._in_write = True
+            # Se logs detalhados estiverem ativados, adicionar ao buffer
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    if config.get("interface", {}).get("logs_detalhados_aplicacao", False):
+                        mensagem = mensagem.strip()
+                        if mensagem:  # Ignorar linhas vazias
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            self.log_buffer.append({
+                                "timestamp": timestamp,
+                                "tipo": "aplicacao",
+                                "mensagem": mensagem
+                            })
+                            # Manter apenas os últimos 200 logs
+                            if len(self.log_buffer) > 200:
+                                self.log_buffer[:] = self.log_buffer[-200:]
+        except:
+            pass  # Ignorar erros na captura de logs
+        finally:
+            self._in_write = False
+    
+    def flush(self):
+        self.terminal.flush()
+
+# Redirecionar stdout para captura de logs
+sys.stdout = LogCapture()
+
 
 @lru_cache(maxsize=1)
 def carregar_configuracao():
@@ -233,6 +282,23 @@ def verificar_e_corrigir_configuracao():
         return False, f"Erro ao sincronizar configuração: {e}"
 
 
+def log_aplicacao(mensagem, tipo="info"):
+    """Adiciona uma mensagem ao buffer de logs da aplicação."""
+    global logs_aplicacao_buffer
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = {
+        "timestamp": timestamp,
+        "tipo": tipo,
+        "mensagem": mensagem
+    }
+    logs_aplicacao_buffer.append(log_entry)
+    # Manter apenas os últimos 200 logs
+    if len(logs_aplicacao_buffer) > 200:
+        logs_aplicacao_buffer = logs_aplicacao_buffer[-200:]
+    
+    # Sempre imprimir no terminal
+    print(mensagem)
+
 def executar_processamento_principal():
     """Executa o processamento principal importando e rodando o script original."""
     global progresso_atual
@@ -240,16 +306,19 @@ def executar_processamento_principal():
     try:
         # Verificar e sincronizar configurações
         config_ok, config_msg = verificar_e_corrigir_configuracao()
+        log_aplicacao(f"🔧 {config_msg}")
         progresso_atual["logs"].append(f"🔧 {config_msg}")
         
         if not config_ok:
             progresso_atual["status"] = "Erro: API Key não configurada"
             return False
 
+        log_aplicacao("🔑 API Key encontrada, continuando...")
         progresso_atual["logs"].append("🔑 API Key encontrada, continuando...")
 
         # Verificar se há imagens para processar
         if not os.path.exists(DIRETORIO_IMAGENS):
+            log_aplicacao("❌ Diretório de imagens não encontrado!")
             progresso_atual["logs"].append("❌ Diretório de imagens não encontrado!")
             return False
 
@@ -260,17 +329,20 @@ def executar_processamento_principal():
         ]
 
         if not imagens:
+            log_aplicacao("❌ Nenhuma imagem encontrada para processar!")
             progresso_atual["logs"].append(
                 "❌ Nenhuma imagem encontrada para processar!"
             )
             return False
 
+        log_aplicacao(f"📸 Encontradas {len(imagens)} imagens para processar")
         progresso_atual["logs"].append(
             f"📸 Encontradas {len(imagens)} imagens para processar"
         )
 
         # No ambiente Vercel, o processamento completo pode ser limitado
         if "VERCEL" in os.environ:
+            log_aplicacao("⚠️ Ambiente Vercel: processamento completo pode ser limitado")
             progresso_atual["logs"].append(
                 "⚠️ Ambiente Vercel: processamento completo pode ser limitado"
             )
@@ -279,6 +351,7 @@ def executar_processamento_principal():
         # Importar e executar o módulo principal (apenas em desenvolvimento local)
         extrair_dados_path = os.path.join(BASE_PATH, "src", "extrair-dados.py")
         if os.path.exists(extrair_dados_path):
+            log_aplicacao("⚙️ Carregando módulo de processamento...")
             progresso_atual["logs"].append("⚙️ Carregando módulo de processamento...")
             spec = importlib.util.spec_from_file_location(
                 "extrair_dados", extrair_dados_path
@@ -286,9 +359,11 @@ def executar_processamento_principal():
             extrair_dados = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(extrair_dados)
         else:
+            log_aplicacao("❌ Script de processamento não encontrado")
             progresso_atual["logs"].append("❌ Script de processamento não encontrado")
             return False
 
+        log_aplicacao("🚀 Iniciando análise com IA...")
         progresso_atual["logs"].append("🚀 Iniciando análise com IA...")
 
         # Executar a função principal
@@ -296,9 +371,11 @@ def executar_processamento_principal():
 
         # Verificar se o relatório foi gerado
         if os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            log_aplicacao("✅ Relatório Excel gerado com sucesso!")
             progresso_atual["logs"].append("✅ Relatório Excel gerado com sucesso!")
             return True
         else:
+            log_aplicacao("⚠️ Processamento concluído, mas relatório não foi encontrado")
             progresso_atual["logs"].append(
                 "⚠️ Processamento concluído, mas relatório não foi encontrado"
             )
@@ -306,7 +383,7 @@ def executar_processamento_principal():
 
     except Exception as e:
         erro_msg = f"Erro ao executar processamento: {str(e)}"
-        print(erro_msg)
+        log_aplicacao(f"❌ {erro_msg}", "erro")
         progresso_atual["logs"].append(f"❌ {erro_msg}")
         return False
 
@@ -825,57 +902,65 @@ def visualizar_logs():
 def api_logs():
     """API para obter logs em tempo real."""
     try:
+        config = carregar_configuracao()
+        logs_detalhados = config.get("interface", {}).get("logs_detalhados_aplicacao", False)
         logs = []
 
-        # Ler log de processamento
-        if os.path.exists(LOG_PROCESSADOS_FILE):
-            with open(LOG_PROCESSADOS_FILE, "r", encoding="utf-8") as f:
-                linhas = f.readlines()
-                logs.extend(
-                    [
-                        {
-                            "tipo": "processado",
-                            "timestamp": datetime.now().strftime("%H:%M:%S"),
-                            "mensagem": linha.strip(),
-                        }
-                        for linha in linhas[-20:]
-                        if linha.strip()
-                    ]
-                )  # Últimas 20 linhas
-
-        # Ler log de consumo
-        if os.path.exists(LOG_CONSUMO_FILE):
-            with open(LOG_CONSUMO_FILE, "r", encoding="utf-8") as f:
-                linhas = f.readlines()
-                for linha in linhas[-10:]:  # Últimas 10 linhas
-                    if linha.strip():
-                        logs.append(
+        # Se logs detalhados estiver ativo, retornar logs da aplicação
+        if logs_detalhados and logs_aplicacao_buffer:
+            logs.extend(logs_aplicacao_buffer[-100:])
+        else:
+            # Modo padrão - logs simplificados
+            # Ler log de processamento
+            if os.path.exists(LOG_PROCESSADOS_FILE):
+                with open(LOG_PROCESSADOS_FILE, "r", encoding="utf-8") as f:
+                    linhas = f.readlines()
+                    logs.extend(
+                        [
                             {
-                                "tipo": "consumo",
-                                "timestamp": (
-                                    linha[:19]
-                                    if len(linha) > 19
-                                    else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                ),
+                                "tipo": "processado",
+                                "timestamp": datetime.now().strftime("%H:%M:%S"),
                                 "mensagem": linha.strip(),
                             }
-                        )
+                            for linha in linhas[-20:]
+                            if linha.strip()
+                        ]
+                    )  # Últimas 20 linhas
 
-        # Adicionar logs do progresso atual
-        for log_msg in progresso_atual.get("logs", []):
-            logs.append(
-                {
-                    "tipo": "progresso",
-                    "timestamp": datetime.now().strftime("%H:%M:%S"),
-                    "mensagem": log_msg,
-                }
-            )
+            # Ler log de consumo
+            if os.path.exists(LOG_CONSUMO_FILE):
+                with open(LOG_CONSUMO_FILE, "r", encoding="utf-8") as f:
+                    linhas = f.readlines()
+                    for linha in linhas[-10:]:  # Últimas 10 linhas
+                        if linha.strip():
+                            logs.append(
+                                {
+                                    "tipo": "consumo",
+                                    "timestamp": (
+                                        linha[:19]
+                                        if len(linha) > 19
+                                        else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    ),
+                                    "mensagem": linha.strip(),
+                                }
+                            )
+
+            # Adicionar logs do progresso atual
+            for log_msg in progresso_atual.get("logs", []):
+                logs.append(
+                    {
+                        "tipo": "progresso",
+                        "timestamp": datetime.now().strftime("%H:%M:%S"),
+                        "mensagem": log_msg,
+                    }
+                )
 
         return jsonify(
             {
-                "logs": logs[-50:],  # Últimos 50 logs
+                "logs": logs[-100:],  # Últimos 100 logs
                 "processamento_ativo": processamento_ativo,
                 "progresso": progresso_atual,
+                "logs_detalhados": logs_detalhados,
             }
         )
 
@@ -961,14 +1046,210 @@ def download_relatorio():
             flash("Relatório não encontrado", "warning")
             return redirect(url_for("index"))
 
-        return send_file(
-            ARQUIVO_SAIDA_EXCEL,
-            as_attachment=True,
-            download_name=f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-        )
+        # Obter filtros de seções e colunas
+        secoes_json = request.args.get('secoes')
+        colunas_json = request.args.get('colunas')
+        
+        if secoes_json and colunas_json:
+            # Aplicar filtros
+            import json as json_lib
+            secoes_selecionadas = json_lib.loads(secoes_json)
+            colunas_por_secao = json_lib.loads(colunas_json)
+            
+            # Ler Excel original
+            sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+            
+            # Criar arquivo filtrado
+            xlsx_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+            xlsx_path = os.path.join(BASE_PATH, "resultados", f"temp_{xlsx_filename}")
+            
+            with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+                for secao in secoes_selecionadas:
+                    if secao in sheets:
+                        df = sheets[secao]
+                        colunas = colunas_por_secao.get(secao, [])
+                        if colunas:
+                            # Filtrar colunas existentes
+                            colunas_existentes = [col for col in colunas if col in df.columns]
+                            if colunas_existentes:
+                                df_filtrado = df[colunas_existentes]
+                                df_filtrado.to_excel(writer, sheet_name=secao, index=False)
+            
+            # Enviar arquivo filtrado
+            response = send_file(
+                xlsx_path,
+                as_attachment=True,
+                download_name=xlsx_filename,
+            )
+            
+            # Remover arquivo temporário
+            @response.call_on_close
+            def remove_file():
+                try:
+                    if os.path.exists(xlsx_path):
+                        os.remove(xlsx_path)
+                except:
+                    pass
+            
+            return response
+        else:
+            # Download completo (comportamento original)
+            return send_file(
+                ARQUIVO_SAIDA_EXCEL,
+                as_attachment=True,
+                download_name=f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+            )
     except Exception as e:
         flash(f"Erro no download: {str(e)}", "danger")
         return redirect(url_for("index"))
+
+
+@app.route("/api/opcoes_exportacao")
+def api_opcoes_exportacao():
+    """API para obter seções e colunas disponíveis para exportação."""
+    try:
+        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            return jsonify({"error": "Relatório não encontrado"}), 404
+        
+        sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+        
+        secoes = list(sheets.keys())
+        colunas_por_secao = {}
+        
+        for sheet_name, df in sheets.items():
+            if df is not None and not df.empty:
+                colunas_por_secao[sheet_name] = df.columns.tolist()
+        
+        return jsonify({
+            "secoes": secoes,
+            "colunas_por_secao": colunas_por_secao
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/download_relatorio_txt")
+def download_relatorio_txt():
+    """Download do relatório em formato TXT."""
+    try:
+        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            flash("Relatório não encontrado", "warning")
+            return redirect(url_for("index"))
+
+        # Obter filtros de seções e colunas
+        secoes_json = request.args.get('secoes')
+        colunas_json = request.args.get('colunas')
+        
+        # Ler todas as sheets do Excel
+        sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+        
+        # Aplicar filtros se fornecidos
+        secoes_para_exportar = sheets.keys()
+        colunas_por_secao_filtradas = {}
+        
+        if secoes_json and colunas_json:
+            import json as json_lib
+            secoes_selecionadas = json_lib.loads(secoes_json)
+            colunas_por_secao = json_lib.loads(colunas_json)
+            secoes_para_exportar = secoes_selecionadas
+            colunas_por_secao_filtradas = colunas_por_secao
+        
+        # Criar arquivo temporário para o TXT
+        txt_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.txt'
+        txt_path = os.path.join(BASE_PATH, "resultados", txt_filename)
+        
+        with open(txt_path, "w", encoding="utf-8") as f:
+            # Cabeçalho do relatório
+            f.write("="*80 + "\n")
+            f.write("RELATÓRIO COMPLETO DE ANÁLISE DE PRODUTOS\n")
+            f.write(f"Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+            f.write("="*80 + "\n\n")
+            
+            # Processar cada sheet na ordem
+            sheet_order = []
+            for sheet_name in secoes_para_exportar:
+                if sheet_name not in sheets:
+                    continue
+                if "Avarias" in sheet_name:
+                    sheet_order.insert(0, sheet_name)
+                elif "Uso Interno" in sheet_name:
+                    if sheet_order and "Avarias" in sheet_order[0]:
+                        sheet_order.insert(1, sheet_name)
+                    else:
+                        sheet_order.insert(0, sheet_name)
+                else:
+                    sheet_order.append(sheet_name)
+            
+            for sheet_name in sheet_order:
+                df = sheets[sheet_name]
+                
+                if df is None or df.empty:
+                    continue
+                
+                # Aplicar filtro de colunas se fornecido
+                if colunas_por_secao_filtradas and sheet_name in colunas_por_secao_filtradas:
+                    colunas = colunas_por_secao_filtradas[sheet_name]
+                    colunas_existentes = [col for col in colunas if col in df.columns]
+                    if colunas_existentes:
+                        df = df[colunas_existentes]
+                    else:
+                        continue  # Pular se nenhuma coluna válida
+                
+                # Título da seção
+                f.write("\n" + "="*80 + "\n")
+                f.write(f"{sheet_name.upper()}\n")
+                f.write("="*80 + "\n\n")
+                f.write(f"Total de registros: {len(df)}\n")
+                f.write("-"*80 + "\n\n")
+                
+                # Processar cada linha
+                for idx, row in df.iterrows():
+                    f.write(f"Registro #{idx + 1}:\n")
+                    f.write("-"*40 + "\n")
+                    
+                    # Escrever cada coluna com seu valor
+                    for col in df.columns:
+                        valor = row[col]
+                        # Tratar valores NaN
+                        if pd.isna(valor) or valor == "" or str(valor).lower() == "nan":
+                            valor = "-"
+                        
+                        # Formatação especial para observações longas
+                        if "observ" in col.lower() or "detalhes" in col.lower():
+                            f.write(f"\n{col}:\n")
+                            f.write(f"  {str(valor)}\n")
+                        else:
+                            f.write(f"{col}: {str(valor)}\n")
+                    
+                    f.write("\n")
+                
+            # Rodapé
+            f.write("\n" + "="*80 + "\n")
+            f.write("FIM DO RELATÓRIO\n")
+            f.write("="*80 + "\n")
+        
+        # Enviar arquivo
+        response = send_file(
+            txt_path,
+            as_attachment=True,
+            download_name=txt_filename,
+            mimetype="text/plain"
+        )
+        
+        # Agendar remoção do arquivo temporário após envio
+        @response.call_on_close
+        def remove_file():
+            try:
+                if os.path.exists(txt_path):
+                    os.remove(txt_path)
+            except:
+                pass
+        
+        return response
+        
+    except Exception as e:
+        flash(f"Erro ao gerar arquivo TXT: {str(e)}", "danger")
+        return redirect(url_for("visualizar_relatorio"))
 
 
 @app.route("/api/obter_erros_pendentes")
@@ -1101,6 +1382,43 @@ def progresso_reanalise():
     })
 
 
+@app.route("/api/provedores_disponiveis")
+def provedores_disponiveis():
+    """API para listar provedores de IA disponíveis."""
+    try:
+        from src.ai_providers import AIProviderFactory
+        
+        provedores = AIProviderFactory.listar_provedores()
+        return jsonify({
+            "success": True,
+            "provedores": provedores
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/modelos_disponiveis/<provider>")
+def modelos_disponiveis(provider):
+    """API para listar modelos disponíveis de um provedor."""
+    try:
+        from src.ai_providers import AIProviderFactory
+        
+        modelos = AIProviderFactory.obter_modelos(provider)
+        return jsonify({
+            "success": True,
+            "modelos": modelos,
+            "provider": provider
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 @app.route("/configuracoes")
 def configuracoes():
     """Página de configurações."""
@@ -1121,12 +1439,30 @@ def salvar_configuracao_route():
         data = request.json
         config = carregar_configuracao()
 
-        # Atualizar configurações
+        # Atualizar configurações da API
         if "api" in data:
-            config["api"].update(data["api"])
+            for key, value in data["api"].items():
+                config["api"][key] = value
+            
+            # Se um modelo específico foi selecionado, salvar nas configurações de processamento
+            if "modelo_selecionado" in data["api"]:
+                provider = data["api"].get("provider", "gemini")
+                modelo_key = f"modelo_{provider}"
+                if "processamento" not in config:
+                    config["processamento"] = {}
+                config["processamento"][modelo_key] = data["api"]["modelo_selecionado"]
+        
+        # Atualizar configurações de processamento
         if "processamento" in data:
-            config["processamento"].update(data["processamento"])
+            if "processamento" not in config:
+                config["processamento"] = {}
+            for key, value in data["processamento"].items():
+                config["processamento"][key] = value
+        
+        # Atualizar configurações de interface
         if "interface" in data:
+            if "interface" not in config:
+                config["interface"] = {}
             config["interface"].update(data["interface"])
 
         # No ambiente Vercel, apenas simular salvamento

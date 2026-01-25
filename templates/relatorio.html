@@ -20,11 +20,27 @@ endblock %} {% block head %}
       </div>
       <div>
         <a
-          href="{{ url_for('download_relatorio') }}"
-          class="btn btn-success me-2"
+          href="{{ url_for('editar_dados') }}"
+          class="btn btn-primary me-2"
         >
-          <i class="bi bi-download"></i> Download Excel
+          <i class="bi bi-pencil-square"></i> Editar Dados
         </a>
+        <div class="btn-group me-2" role="group">
+          <button
+            class="btn btn-success"
+            onclick="abrirModalExportacao('excel')"
+            title="Exportar em formato Excel"
+          >
+            <i class="bi bi-file-earmark-excel"></i> Excel
+          </button>
+          <button
+            class="btn btn-success"
+            onclick="abrirModalExportacao('txt')"
+            title="Exportar em formato TXT"
+          >
+            <i class="bi bi-file-earmark-text"></i> TXT
+          </button>
+        </div>
         <button id="refreshBtn" class="btn btn-outline-primary">
           <i class="bi bi-arrow-clockwise"></i> Atualizar
         </button>
@@ -579,5 +595,296 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 });
+
+// ========================================
+// MODAL DE EXPORTAÇÃO - FUNÇÕES GLOBAIS
+// ========================================
+
+let formatoExportacao = 'excel';
+let modalExportacao = null;
+
+// Inicializar modal quando DOM estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    const modalElement = document.getElementById('exportacaoModal');
+    if (modalElement) {
+      modalExportacao = new bootstrap.Modal(modalElement);
+      console.log('Modal de exportação inicializado com sucesso');
+    } else {
+      console.error('Elemento exportacaoModal não encontrado no DOM');
+    }
+  } catch (error) {
+    console.error('Erro ao inicializar modal de exportação:', error);
+  }
+});
+
+window.abrirModalExportacao = function(formato) {
+  try {
+    console.log('abrirModalExportacao chamado com formato:', formato);
+    
+    if (!modalExportacao) {
+      // Tentar inicializar se ainda não foi
+      const modalElement = document.getElementById('exportacaoModal');
+      if (modalElement) {
+        modalExportacao = new bootstrap.Modal(modalElement);
+      } else {
+        alert('Erro: Modal de exportação não está disponível. Recarregue a página.');
+        console.error('Modal de exportação não inicializado');
+        return;
+      }
+    }
+    
+    formatoExportacao = formato;
+    const tituloElement = document.getElementById('tituloModalExportacao');
+    if (tituloElement) {
+      tituloElement.textContent = `Exportar Relatório - ${formato.toUpperCase()}`;
+    } else {
+      console.error('Elemento tituloModalExportacao não encontrado');
+    }
+    
+    // Carregar seções e colunas disponíveis
+    carregarOpcoesExportacao();
+    modalExportacao.show();
+    
+  } catch (error) {
+    console.error('Erro em abrirModalExportacao:', error);
+    alert('Ocorreu um erro ao abrir o modal de exportação: ' + error.message);
+  }
+};
+
+async function carregarOpcoesExportacao() {
+  try {
+    console.log('Carregando opções de exportação...');
+    const response = await fetch('/api/opcoes_exportacao');
+    
+    if (!response.ok) {
+      throw new Error(`Erro na requisição: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Opções recebidas:', data);
+    
+    // Preencher seções
+    const secoesContainer = document.getElementById('secoesExportacao');
+    secoesContainer.innerHTML = '';
+    
+    data.secoes.forEach(secao => {
+      const div = document.createElement('div');
+      div.className = 'form-check';
+      
+      // Verificar se é seção de erros - desmarcar por padrão
+      const secaoLower = secao.toLowerCase();
+      const isErro = secaoLower.includes('erro') || secaoLower.includes('error');
+      
+      div.innerHTML = `
+        <input class="form-check-input secao-checkbox" type="checkbox" 
+               value="${secao}" id="secao_${secao.replace(/\s+/g, '_')}" 
+               ${isErro ? '' : 'checked'}>
+        <label class="form-check-label" for="secao_${secao.replace(/\s+/g, '_')}">
+          ${secao}
+        </label>
+      `;
+      secoesContainer.appendChild(div);
+      
+      // Adicionar evento para mostrar/ocultar colunas
+      div.querySelector('input').addEventListener('change', function() {
+        const colunasDiv = document.getElementById(`colunas_${secao.replace(/\s+/g, '_')}`);
+        if (colunasDiv) {
+          colunasDiv.style.display = this.checked ? 'block' : 'none';
+        }
+      });
+    });
+    
+    // Preencher colunas por seção
+    const colunasContainer = document.getElementById('colunasExportacao');
+    colunasContainer.innerHTML = '';
+    
+    for (const [secao, colunas] of Object.entries(data.colunas_por_secao)) {
+      const secaoDiv = document.createElement('div');
+      secaoDiv.id = `colunas_${secao.replace(/\s+/g, '_')}`;
+      secaoDiv.className = 'mb-3';
+      secaoDiv.innerHTML = `<h6 class="mb-2">${secao}</h6>`;
+      
+      const colunasGrid = document.createElement('div');
+      colunasGrid.className = 'row';
+      
+      colunas.forEach(coluna => {
+        const div = document.createElement('div');
+        div.className = 'col-md-6';
+        
+        // Verificar se é coluna de caminho ou imagem - desmarcar por padrão
+        const colunaLower = coluna.toLowerCase();
+        const isImagemOuCaminho = colunaLower.includes('caminho') || 
+                                  colunaLower.includes('imagem') ||
+                                  colunaLower.includes('path') ||
+                                  colunaLower.includes('image');
+        
+        div.innerHTML = `
+          <div class="form-check">
+            <input class="form-check-input coluna-checkbox" type="checkbox" 
+                   value="${coluna}" data-secao="${secao}" 
+                   id="col_${secao.replace(/\s+/g, '_')}_${coluna.replace(/\s+/g, '_')}" 
+                   ${isImagemOuCaminho ? '' : 'checked'}>
+            <label class="form-check-label" for="col_${secao.replace(/\s+/g, '_')}_${coluna.replace(/\s+/g, '_')}">
+              ${coluna}
+            </label>
+          </div>
+        `;
+        colunasGrid.appendChild(div);
+      });
+      
+      secaoDiv.appendChild(colunasGrid);
+      colunasContainer.appendChild(secaoDiv);
+    }
+    
+    console.log('Opções de exportação carregadas com sucesso');
+  } catch (error) {
+    console.error('Erro ao carregar opções:', error);
+    alert('Erro ao carregar opções de exportação: ' + error.message);
+  }
+}
+
+window.selecionarTodasSecoes = function(selecionar) {
+  try {
+    console.log('selecionarTodasSecoes:', selecionar);
+    document.querySelectorAll('.secao-checkbox').forEach(cb => {
+      cb.checked = selecionar;
+      cb.dispatchEvent(new Event('change'));
+    });
+  } catch (error) {
+    console.error('Erro em selecionarTodasSecoes:', error);
+  }
+};
+
+window.selecionarTodasColunas = function(selecionar) {
+  try {
+    console.log('selecionarTodasColunas:', selecionar);
+    document.querySelectorAll('.coluna-checkbox').forEach(cb => {
+      cb.checked = selecionar;
+    });
+  } catch (error) {
+    console.error('Erro em selecionarTodasColunas:', error);
+  }
+};
+
+window.realizarExportacao = function() {
+  try {
+    console.log('realizarExportacao chamada');
+    
+    // Obter seções selecionadas
+    const secoesSelecionadas = Array.from(document.querySelectorAll('.secao-checkbox:checked'))
+      .map(cb => cb.value);
+    
+    console.log('Seções selecionadas:', secoesSelecionadas);
+    
+    if (secoesSelecionadas.length === 0) {
+      alert('Selecione pelo menos uma seção para exportar!');
+      return;
+    }
+    
+    // Obter colunas selecionadas por seção
+    const colunasPorSecao = {};
+    secoesSelecionadas.forEach(secao => {
+      const colunas = Array.from(document.querySelectorAll(`.coluna-checkbox[data-secao="${secao}"]:checked`))
+        .map(cb => cb.value);
+      colunasPorSecao[secao] = colunas;
+    });
+    
+    console.log('Colunas por seção:', colunasPorSecao);
+    
+    // Construir URL com parâmetros
+    const params = new URLSearchParams();
+    params.append('secoes', JSON.stringify(secoesSelecionadas));
+    params.append('colunas', JSON.stringify(colunasPorSecao));
+    
+    // Fazer download
+    const url = formatoExportacao === 'excel' 
+      ? `/download_relatorio?${params.toString()}`
+      : `/download_relatorio_txt?${params.toString()}`;
+    
+    console.log('URL de download:', url);
+    window.location.href = url;
+    modalExportacao.hide();
+    
+  } catch (error) {
+    console.error('Erro em realizarExportacao:', error);
+    alert('Erro ao realizar exportação: ' + error.message);
+  }
+};
+
+// Capturar erros globais JavaScript
+window.addEventListener('error', function(event) {
+  console.error('Erro JavaScript global capturado:', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: event.error
+  });
+});
+
+window.addEventListener('unhandledrejection', function(event) {
+  console.error('Promise rejeitada não tratada:', event.reason);
+});
 </script>
+
+<!-- Modal de Exportação -->
+<div class="modal fade" id="exportacaoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tituloModalExportacao">Opções de Exportação</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <!-- Seções -->
+          <div class="col-md-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0">Seções</h6>
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="selecionarTodasSecoes(true)" title="Selecionar todas">
+                  <i class="bi bi-check-all"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="selecionarTodasSecoes(false)" title="Desmarcar todas">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>
+            </div>
+            <div id="secoesExportacao" class="border rounded p-2" style="max-height: 300px; overflow-y: auto;">
+              <!-- Preenchido dinamicamente -->
+            </div>
+          </div>
+          
+          <!-- Colunas -->
+          <div class="col-md-8">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0">Colunas</h6>
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="selecionarTodasColunas(true)" title="Selecionar todas">
+                  <i class="bi bi-check-all"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="selecionarTodasColunas(false)" title="Desmarcar todas">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>
+            </div>
+            <div id="colunasExportacao" class="border rounded p-2" style="max-height: 300px; overflow-y: auto;">
+              <!-- Preenchido dinamicamente -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Cancelar
+        </button>
+        <button type="button" class="btn btn-success" onclick="realizarExportacao()">
+          <i class="bi bi-download"></i> Exportar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %} {% endblock %}

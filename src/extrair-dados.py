@@ -115,6 +115,10 @@ class ProcessingConfig:
     """Configurações centralizadas do processamento."""
 
     def __init__(self):
+        # Carregar configurações adicionais
+        self.temperatura = CONFIG.get("processamento", {}).get("temperatura", 0.1)
+        self.max_tokens = CONFIG.get("processamento", {}).get("max_tokens", 1000)
+        self.timeout = CONFIG.get("processamento", {}).get("timeout", 30)
         self.validate_settings()
 
     def validate_settings(self) -> None:
@@ -577,34 +581,42 @@ def _aplicar_formatacao_excel(
 
 def main() -> None:
     """Função principal do analisador de imagens."""
-    print("🚀 ANALISADOR MESTRE DE IMAGENS E MENSAGENS - INICIANDO")
-    print("=" * 60)
+    print("\n" + "="*70)
+    print("🚀 ANALISADOR MESTRE DE IMAGENS E MENSAGENS")
+    print(f"⏰ Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    print("="*70 + "\n")
     try:
+        print("🔍 Verificando dependências do sistema...")
         verificar_dependencias()
+        print("✅ Dependências verificadas com sucesso\n")
+        
         config = ProcessingConfig()
         
         # Mostrar configurações de otimização
-        print(f"⚙️ Configurações de processamento:")
-        print(f"   • Tamanho do lote: {TAMANHO_LOTE} imagens/requisição")
-        print(f"   • Workers paralelos: {MAX_WORKERS}")
-        print(f"   • Delay entre requisições: {REQUEST_DELAY}s")
-        print(f"   • Modelo: {GEMINI_MODEL}")
-        print()
+        print("⚙️  CONFIGURAÇÕES DE PROCESSAMENTO:")
+        print("-" * 50)
+        print(f"   📦 Tamanho do lote: {TAMANHO_LOTE} imagens por requisição")
+        print(f"   ⚡ Workers paralelos: {MAX_WORKERS} threads")
+        print(f"   ⏱️  Delay entre requisições: {REQUEST_DELAY}s")
+        print(f"   🤖 Modelo de IA: {GEMINI_MODEL}")
+        print(f"   🌡️  Temperatura: {config.temperatura}")
+        print(f"   📊 Max Tokens: {config.max_tokens}")
+        print("-" * 50 + "\n")
         
         if not os.path.exists(DIRETORIO_IMAGENS):
             os.makedirs(DIRETORIO_IMAGENS)
-            print(f"📁 Pasta '{DIRETORIO_IMAGENS}' criada.")
-            print(
-                "📋 Adicione suas imagens e o arquivo .txt de mensagens, depois execute novamente."
-            )
+            print(f"📁 Diretório criado: {DIRETORIO_IMAGENS}")
+            print("⚠️  ATENÇÃO: Adicione suas imagens (.jpg, .png) e o arquivo .txt de mensagens")
+            print("   Após adicionar os arquivos, execute o processamento novamente.")
             return
 
         imagens_processadas = carregar_logs()
-        print(f"📝 Arquivos já processados anteriormente: {len(imagens_processadas)}")
+        print(f"📝 Histórico: {len(imagens_processadas)} arquivos já processados anteriormente\n")
 
+        print("🔑 Configurando acesso à API do Google Gemini...")
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(GEMINI_MODEL)
-        print(f"🤖 Modelo {GEMINI_MODEL} configurado.")
+        print(f"✅ Modelo {GEMINI_MODEL} configurado e pronto para uso\n")
 
         imagens_para_processar = [
             os.path.join(DIRETORIO_IMAGENS, f)
@@ -613,7 +625,8 @@ def main() -> None:
         ]
 
         if not imagens_para_processar:
-            print("✅ Nenhuma imagem nova para analisar.")
+            print("✅ PROCESSAMENTO COMPLETO: Todas as imagens já foram analisadas")
+            print("📄 Para reprocessar, limpe o arquivo de log ou adicione novas imagens\n")
             return
 
         lotes_de_imagens = [
@@ -621,16 +634,19 @@ def main() -> None:
             for i in range(0, len(imagens_para_processar), TAMANHO_LOTE)
         ]
 
-        print(f"🖼️ Novas imagens a processar: {len(imagens_para_processar)}")
-        print(
-            f"📦 Lotes criados: {len(lotes_de_imagens)} (até {TAMANHO_LOTE} imagens por lote)"
-        )
+        print("📊 ESTATÍSTICAS DE PROCESSAMENTO:")
+        print("-" * 50)
+        print(f"   🖼️  Novas imagens detectadas: {len(imagens_para_processar)}")
+        print(f"   📦 Lotes criados: {len(lotes_de_imagens)} (máx. {TAMANHO_LOTE} imagens/lote)")
+        print(f"   📅 Tempo estimado: ~{len(lotes_de_imagens) * REQUEST_DELAY:.1f}s (mínimo)")
+        print("-" * 50 + "\n")
 
         mensagens_por_imagem = mapear_mensagens_para_imagens()
         novas_avarias, novos_usos_internos, novos_erros = [], [], []
         total_tokens_consumidos = 0
 
-        print("\n🔄 Iniciando processamento com lógica de texto aprimorada...")
+        print("🔄 INICIANDO ANÁLISE COM IA...")
+        print("   Prioridade: Texto > Imagem (otimizado para precisão)\n")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             future_to_lote = {}
@@ -682,15 +698,31 @@ def main() -> None:
         detalhes = f"Processamento de {total_imagens} imagens, {len(novas_avarias)} avarias, {len(novos_usos_internos)} uso interno, {len(novos_erros)} erros"
         registrar_consumo_log(total_tokens_consumidos, detalhes)
 
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 70)
         print("✅ ANÁLISE CONCLUÍDA COM SUCESSO!")
-        print(
-            f"🪙  Total de tokens consumidos nesta execução: {total_tokens_consumidos:,}"
-        )
-        print(f"📊 Log de consumo salvo em: {LOG_CONSUMO_FILE}")
-        print("=" * 60)
+        print("\n📊 RESUMO DO PROCESSAMENTO:")
+        print("-" * 70)
+        print(f"   ✅ Avarias identificadas: {len(novas_avarias)}")
+        print(f"   🏭 Uso interno identificado: {len(novos_usos_internos)}")
+        print(f"   ❌ Erros encontrados: {len(novos_erros)}")
+        print(f"   🪙 Total de tokens consumidos: {total_tokens_consumidos:,}")
+        print(f"   💾 Relatório salvo em: {ARQUIVO_SAIDA_EXCEL}")
+        print(f"   📊 Log de consumo salvo em: {LOG_CONSUMO_FILE}")
+        print(f"   ⏰ Concluído em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        print("-" * 70)
+        
+        if novos_erros:
+            print("\n⚠️  ATENÇÃO: Algumas imagens não foram processadas corretamente")
+            print("   Verifique a aba 'Erros' no relatório Excel para mais detalhes\n")
+        else:
+            print("\n🎉 Todas as imagens foram processadas com sucesso!\n")
+            
+        print("=" * 70 + "\n")
     except Exception as e:
-        print(f"\n❌ Erro crítico na execução principal: {e}")
+        print(f"\n❌ ERRO CRÍTICO na execução principal:")
+        print(f"   Detalhes: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def _processar_resultado_arquivo(
@@ -834,7 +866,11 @@ def reanalisar_erros(
     Returns:
         Dicionário com o resultado da reanálise
     """
-    from src.gerenciador_erros import criar_gerenciador
+    # Import local para evitar problemas de importação circular
+    import sys
+    import os as os_module
+    sys.path.insert(0, os_module.path.dirname(os_module.path.dirname(__file__)))
+    from gerenciador_erros import criar_gerenciador
     
     print("\n🔄 INICIANDO REANÁLISE DE ERROS")
     print("=" * 60)

@@ -13,6 +13,17 @@ Avarias{% endblock %} {% block content %}
         </p>
       </div>
       <div>
+        <div class="form-check form-switch d-inline-block me-3">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="toggleLogsDetalhados"
+            onchange="alternarLogsDetalhados()"
+          />
+          <label class="form-check-label" for="toggleLogsDetalhados">
+            <i class="bi bi-code-square"></i> Logs Detalhados da Aplicação
+          </label>
+        </div>
         <button id="toggleAutoScroll" class="btn btn-outline-secondary me-2">
           <i class="bi bi-arrow-down-circle"></i> Auto-scroll:
           <span id="autoScrollStatus">ON</span>
@@ -200,6 +211,61 @@ Avarias{% endblock %} {% block content %}
       updateLogCount();
     });
 
+    // Função para alternar logs detalhados
+    async function alternarLogsDetalhados() {
+      const checkbox = document.getElementById("toggleLogsDetalhados");
+      const ativo = checkbox.checked;
+
+      try {
+        // Carregar configuração atual
+        const configResponse = await fetch("/api/configuracoes");
+        if (!configResponse.ok) {
+          throw new Error("Erro ao carregar configuração");
+        }
+        const config = await configResponse.json();
+        
+        // Atualizar apenas a propriedade logs_detalhados_aplicacao
+        config.interface = config.interface || {};
+        config.interface.logs_detalhados_aplicacao = ativo;
+
+        // Salvar configuração atualizada
+        const response = await fetch("/api/configuracoes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(config),
+        });
+
+        if (response.ok) {
+          // Limpar logs e reiniciar
+          logConsole.innerHTML = `<div class="text-success"><i class="bi bi-check-circle me-2"></i>${
+            ativo ? "✅ Logs detalhados da aplicação ativados" : "📋 Logs simplificados ativados"
+          }</div>`;
+          logCount = 0;
+          updateLogCount();
+        } else {
+          throw new Error("Erro ao salvar configuração");
+        }
+      } catch (error) {
+        console.error("Erro ao alternar logs detalhados:", error);
+        checkbox.checked = !ativo; // Reverter checkbox
+        logConsole.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Erro ao alternar logs: ${error.message}</div>`;
+      }
+    }
+
+    // Carregar estado dos logs detalhados
+    async function carregarEstadoLogsDetalhados() {
+      try {
+        const response = await fetch("/api/configuracoes");
+        const config = await response.json();
+        const logsDetalhados = config.interface?.logs_detalhados_aplicacao || false;
+        document.getElementById("toggleLogsDetalhados").checked = logsDetalhados;
+      } catch (error) {
+        console.error("Erro ao carregar configuração:", error);
+      }
+    }
+
     // Função para atualizar logs
     function updateLogs() {
       fetch("/api/logs")
@@ -319,6 +385,7 @@ Avarias{% endblock %} {% block content %}
     }
 
     // Iniciar
+    carregarEstadoLogsDetalhados();
     startUpdates();
 
     // Limpar intervalo quando sair da página
