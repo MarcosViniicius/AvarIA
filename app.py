@@ -1326,7 +1326,15 @@ def reanalisar_erros_api():
         def executar_reanalise():
             global processamento_ativo, progresso_atual
             try:
-                from src.extrair_dados import reanalisar_erros
+                # Importar módulo com hífen no nome
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(
+                    "extrair_dados", 
+                    os.path.join(BASE_PATH, "src", "extrair-dados.py")
+                )
+                extrair_dados = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(extrair_dados)
+                reanalisar_erros = extrair_dados.reanalisar_erros
                 
                 resultado = reanalisar_erros(
                     diretorio_imagens=DIRETORIO_IMAGENS,
@@ -2398,6 +2406,308 @@ def debug_relatorio():
         
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
+
+
+# =============================================================================
+# FUNCIONALIDADE DE UNIFICAÇÃO DE RELATÓRIOS
+# =============================================================================
+
+def normalizar_texto(texto):
+    """Normaliza texto para comparação (remove acentos, maiúsculas, espaços extras)."""
+    import unicodedata
+    if pd.isna(texto) or texto == "" or texto == "-":
+        return ""
+    texto = str(texto).strip().lower()
+    # Remover acentos
+    texto = unicodedata.normalize('NFD', texto)
+    texto = ''.join(char for char in texto if unicodedata.category(char) != 'Mn')
+    return texto
+
+
+def extrair_quantidade_unidade(texto):
+    """Extrai quantidade numérica e unidade de uma string.
+    
+    Exemplos:
+        "2 kg" -> (2.0, "kg")
+        "1,5 kg" -> (1.5, "kg")
+        "3.5kg" -> (3.5, "kg")
+        "500g" -> (500.0, "g")
+        "2 unidades" -> (2.0, "unidades")
+    """
+    import re
+    
+    if pd.isna(texto) or texto == "" or texto == "-":
+        return None, None
+    
+    texto = str(texto).strip()
+    
+    # Padrões para capturar número + unidade
+    # Suporta: "2 kg", "2,5 kg", "2.5 kg", "2kg", etc.
+    padroes = [
+        r'([\d]+[,.]?[\d]*)\s*(kg|g|l|ml|unidade|unidades|un|und|caixa|caixas|pacote|pacotes|lata|latas)',
+        r'([\d]+[,.]?[\d]*)\s*([a-zA-Z]+)',
+    ]
+    
+    for padrao in padroes:
+        match = re.search(padrao, texto.lower())
+        if match:
+            try:
+                quantidade_str = match.group(1).replace(',', '.')
+                quantidade = float(quantidade_str)
+                unidade = match.group(2).strip()
+                return quantidade, unidade
+            except:
+                continue
+    
+    return None, None
+
+
+def unificar_itens_por_produto(df, coluna_produto, coluna_quantidade):
+    """Unifica itens do DataFrame agrupando por produto e somando quantidades.
+    
+    Args:
+        df: DataFrame com os dados
+        coluna_produto: Nome da coluna que contém o nome do produto
+        coluna_quantidade: Nome da coluna que contém quantidade com unidade
+        
+    Returns:
+        tuple: (df_unificado, auditoria_dict)
+            - df_unificado: DataFrame com itens consolidados
+            - auditoria_dict: Dicionário mapeando produto unificado -> lista de registros originais
+    """
+    if df.empty or coluna_produto not in df.columns or coluna_quantidade not in df.columns:
+        return df.copy(), {}
+    
+    # Estrutura para armazenar agrupamentos
+    grupos = {}  # {(produto_normalizado, unidade): {"quantidade_total": X, "registros": [...]}}
+    auditoria = {}  # {produto_unificado: [lista de registros originais]}
+    
+    for idx, row in df.iterrows():
+        produto = row.get(coluna_produto, "")
+        quantidade_texto = row.get(coluna_quantidade, "")
+        
+        # Normalizar produto para agrupamento
+        produto_norm = normalizar_texto(produto)
+        
+        if not produto_norm:
+            continue
+            
+        # Extrair quantidade e unidade
+        quantidade, unidade = extrair_quantidade_unidade(quantidade_texto)
+        
+        # Se não conseguiu extrair, usar quantidade como texto
+        if quantidade is None:
+            unidade = "unidade"
+            quantidade = 1.0
+        
+        # Criar chave do grupo
+        chave = (produto_norm, unidade)
+        
+        # Adicionar ao grupo
+        if chave not in grupos:
+            grupos[chave] = {
+                "produto_original": produto,  # Manter nome original (primeiro encontrado)
+                "quantidade_total": 0.0,
+                "unidade": unidade,
+                "registros": []
+            }
+        
+        grupos[chave]["quantidade_total"] += quantidade
+        grupos[chave]["registros"].append({
+            "index": idx,
+            "registro_completo": row.to_dict(),
+            "quantidade_original": quantidade_texto,
+            "quantidade_extraida": quantidade
+        })
+    
+    # Criar DataFrame unificado
+    registros_unificados = []
+    
+    for (produto_norm, unidade), info in grupos.items():
+        # Pegar o primeiro registro como base
+        registro_base = info["registros"][0]["registro_completo"].copy()
+        
+        # Atualizar com dados unificados
+        produto_unificado = info["produto_original"]
+        quantidade_total = info["quantidade_total"]
+        
+        # Formatar quantidade unificada
+        if quantidade_total == int(quantidade_total):
+            quantidade_formatada = f"{int(quantidade_total)} {unidade}"
+        else:
+            quantidade_formatada = f"{quantidade_total:.3f} {unidade}".replace('.', ',')
+        
+        registro_base[coluna_quantidade] = quantidade_formatada
+        registro_base[coluna_produto] = produto_unificado
+        
+        # Adicionar informações de consolidação
+        registro_base["Qtd_Registros_Consolidados"] = len(info["registros"])
+        
+        registros_unificados.append(registro_base)
+        
+        # Guardar auditoria
+        chave_auditoria = f"{produto_unificado} ({quantidade_formatada})"
+        auditoria[chave_auditoria] = info["registros"]
+    
+    # Criar DataFrame unificado
+    if registros_unificados:
+        df_unificado = pd.DataFrame(registros_unificados)
+    else:
+        df_unificado = df.copy()
+    
+    return df_unificado, auditoria
+
+
+def processar_unificacao_completa():
+    """Processa todo o relatório aplicando unificação e gerando planilha de auditoria.
+    
+    Returns:
+        tuple: (sucesso, mensagem, caminho_arquivo_gerado)
+    """
+    try:
+        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            return False, "Relatório original não encontrado", None
+        
+        # Ler arquivo Excel original
+        sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+        
+        # Preparar arquivo de saída
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        arquivo_unificado = os.path.join(
+            BASE_PATH, 
+            "resultados", 
+            f"Relatorio_Unificado_{timestamp}.xlsx"
+        )
+        
+        # Criar writer para o arquivo unificado
+        with pd.ExcelWriter(arquivo_unificado, engine="openpyxl") as writer:
+            
+            # Processar cada sheet
+            for sheet_name, df in sheets.items():
+                
+                if df.empty:
+                    # Sheet vazia, copiar como está
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    continue
+                
+                # Identificar se é uma sheet que deve ser unificada
+                # (Avarias ou Uso Interno)
+                deve_unificar = False
+                coluna_produto = None
+                coluna_quantidade = None
+                
+                # Detectar tipo de sheet e colunas relevantes
+                sheet_lower = sheet_name.lower()
+                if "avaria" in sheet_lower or "uso interno" in sheet_lower:
+                    deve_unificar = True
+                    
+                    # Tentar encontrar colunas de produto e quantidade
+                    colunas = df.columns.tolist()
+                    
+                    for col in colunas:
+                        col_lower = col.lower()
+                        if "produto" in col_lower or "item" in col_lower or "descrição" in col_lower or "descricao" in col_lower:
+                            coluna_produto = col
+                        if "quantidade" in col_lower or "qtd" in col_lower or "peso" in col_lower:
+                            coluna_quantidade = col
+                
+                if deve_unificar and coluna_produto and coluna_quantidade:
+                    # Aplicar unificação
+                    df_unificado, auditoria = unificar_itens_por_produto(
+                        df, coluna_produto, coluna_quantidade
+                    )
+                    
+                    # Salvar sheet unificada
+                    df_unificado.to_excel(writer, sheet_name=f"{sheet_name} - Unificado", index=False)
+                    
+                    # Criar sheet de auditoria
+                    registros_auditoria = []
+                    for produto_unificado, lista_registros in auditoria.items():
+                        for reg in lista_registros:
+                            registro_audit = reg["registro_completo"].copy()
+                            registro_audit["Produto_Unificado"] = produto_unificado
+                            registro_audit["Quantidade_Extraida"] = reg["quantidade_extraida"]
+                            registros_auditoria.append(registro_audit)
+                    
+                    if registros_auditoria:
+                        df_auditoria = pd.DataFrame(registros_auditoria)
+                        # Reordenar colunas para colocar as de auditoria no início
+                        cols = df_auditoria.columns.tolist()
+                        cols_audit = ["Produto_Unificado", "Quantidade_Extraida"]
+                        cols_restantes = [c for c in cols if c not in cols_audit]
+                        df_auditoria = df_auditoria[cols_audit + cols_restantes]
+                        
+                        df_auditoria.to_excel(writer, sheet_name=f"{sheet_name} - Auditoria", index=False)
+                    
+                    # Também salvar a sheet original para referência
+                    df.to_excel(writer, sheet_name=f"{sheet_name} - Original", index=False)
+                    
+                else:
+                    # Sheet não unificável, copiar como está
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        return True, f"Relatório unificado gerado com sucesso", arquivo_unificado
+        
+    except Exception as e:
+        import traceback
+        erro_completo = traceback.format_exc()
+        print(f"❌ Erro ao processar unificação: {erro_completo}")
+        return False, f"Erro ao processar unificação: {str(e)}", None
+
+
+@app.route("/api/unificar_relatorio", methods=["POST"])
+def api_unificar_relatorio():
+    """API para processar unificação do relatório."""
+    try:
+        sucesso, mensagem, arquivo_gerado = processar_unificacao_completa()
+        
+        if sucesso:
+            # Retornar link para download
+            filename = os.path.basename(arquivo_gerado)
+            return jsonify({
+                "success": True,
+                "message": mensagem,
+                "download_url": url_for("download_relatorio_unificado", filename=filename),
+                "filename": filename
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": mensagem
+            }), 400
+            
+    except Exception as e:
+        import traceback
+        erro_completo = traceback.format_exc()
+        print(f"❌ Erro na API de unificação: {erro_completo}")
+        return jsonify({
+            "success": False,
+            "message": f"Erro interno: {str(e)}"
+        }), 500
+
+
+@app.route("/download_relatorio_unificado/<filename>")
+def download_relatorio_unificado(filename):
+    """Download do relatório unificado."""
+    try:
+        # Validar nome do arquivo (segurança)
+        if not filename.startswith("Relatorio_Unificado_"):
+            return jsonify({"error": "Arquivo inválido"}), 400
+        
+        caminho = os.path.join(BASE_PATH, "resultados", filename)
+        
+        if not os.path.exists(caminho):
+            return jsonify({"error": "Arquivo não encontrado"}), 404
+        
+        return send_file(
+            caminho,
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ Erro no download do relatório unificado: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/testar_configuracao")

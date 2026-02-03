@@ -869,7 +869,12 @@ def reanalisar_erros(
     # Import local para evitar problemas de importação circular
     import sys
     import os as os_module
-    sys.path.insert(0, os_module.path.dirname(os_module.path.dirname(__file__)))
+    
+    # Adicionar o diretório src ao path
+    current_dir = os_module.path.dirname(os_module.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    
     from gerenciador_erros import criar_gerenciador
     
     print("\n🔄 INICIANDO REANÁLISE DE ERROS")
