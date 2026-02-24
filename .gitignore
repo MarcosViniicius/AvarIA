@@ -1,154 +1,70 @@
-# =============================================================================
-# PYTHON & FLASK PROJECT GITIGNORE
-# =============================================================================
+# ============================================
+# PYTHON & FLASK
+# ============================================
 
-# Byte-compiled / optimized / DLL files
+# Python compiled files
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyc
 *.pyo
 *.pyd
-*.pyc
-*.pdb
 *.so
 
-# C extensions
-*.so
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
 
 # Distribution / packaging
-.Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
+# Testing
 .pytest_cache/
-cover/
+.coverage
+htmlcov/
 
-# Flask specific
+# Flask
 instance/
 .webassets-cache
 
-# =============================================================================
-# DEVELOPMENT TOOLS & IDEs
-# =============================================================================
+# ============================================
+# IDEs & EDITORS
+# ============================================
 
-# VSCode
 .vscode/
-*.code-workspace
-
-# PyCharm
 .idea/
-*.iml
-*.iws
-*.ipr
-out/
-
-# Sublime Text
-*.tmlanguage.cache
-*.tmPreferences.cache
-*.stTheme.cache
-*.sublime-workspace
+*.code-workspace
 *.sublime-project
-
-# Vim
+*.sublime-workspace
 *.swp
 *.swo
-*~
-.vim/
 
-# Emacs
-*~
-\#*\#
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-auto-save-list
-tramp
-.\#*
-
-# =============================================================================
-# JUPYTER NOTEBOOKS
-# =============================================================================
-
-.ipynb_checkpoints/
-*-checkpoint.ipynb
-
-# =============================================================================
-# OPERATING SYSTEM FILES
-# =============================================================================
-
-# macOS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-.AppleDouble
-.LSOverride
-Icon
+# ============================================
+# SISTEMA OPERACIONAL
+# ============================================
 
 # Windows
 Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-*.stackdump
-[Dd]esktop.ini
+Desktop.ini
 $RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+._*
 
 # Linux
-*~
-.fuse_hidden*
 .directory
-.Trash-*
-.nfs*
+*~
 
-# =============================================================================
-# TEMPORARY & LOG FILES
-# =============================================================================
+# ============================================
+# TEMPORÁRIOS & LOGS
+# ============================================
 
-# General temporary files
 *.tmp
 *.temp
 *.log
@@ -156,158 +72,87 @@ $RECYCLE.BIN/
 *.backup
 *.old
 *.orig
-*.rej
-*.swp
-*.swo
-*~
-
-# Application logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# Arquivos de controle de processamento
 .cancel_processing
 
-# =============================================================================
-# ENVIRONMENT & CONFIGURATION
-# =============================================================================
+# ============================================
+# 🔒 SEGURANÇA (CRÍTICO)
+# ============================================
 
-# Virtual environments
+# Configuração com API keys sensíveis
+config/config.json
+
+# Variáveis de ambiente
 .env
 .env.*
 !.env.example
-.venv
-venv/
-ENV/
-env/
-.python-version
-pipenv.lock
 
-# Configuration files with sensitive data
+# Certificados e chaves
 *.key
 *.pem
 *.p12
 *.pfx
-
-# =============================================================================
-# PROJECT SPECIFIC FILES
-# =============================================================================
-
-# Application data and results
-resultados/*.xlsx
-resultados/*.txt
-resultados/*.log
-resultados/*.csv
-resultados/*.json
-resultados/*.pdf
-!resultados/.gitkeep
-
-# Images and media uploads
-imagens_para_analisar/*.jpg
-imagens_para_analisar/*.jpeg
-imagens_para_analisar/*.png
-imagens_para_analisar/*.gif
-imagens_para_analisar/*.bmp
-imagens_para_analisar/*.tiff
-imagens_para_analisar/*.webp
-imagens_para_analisar/*.svg
-imagens_para_analisar/*.txt
-!imagens_para_analisar/.gitkeep
-!imagens_para_analisar/*.opus
-
-# Backup files
-*.xlsx.bak
-Relatorio_Backup_*.xlsx
-
-# Test files and scripts
-test_*.py
-testar_*.py
-verificar_*.py
-teste_*.py
-validate_*.py
-debug_*.py
-temp_*.py
-
-# Debug and development files
-debug_modal.js
-debug.html
-test.html
-
-# =============================================================================
-# DEPLOYMENT & CLOUD PLATFORMS
-# =============================================================================
-
-# Vercel
-.vercel
-.vercel/
-
-# Netlify
-.netlify/
-
-# Heroku
-Procfile.dev
-
-# Docker
-Dockerfile.dev
-docker-compose.override.yml
-.dockerignore
-
-# =============================================================================
-# CACHE & DEPENDENCIES
-# =============================================================================
-
-# npm (se houver frontend)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm
-.eslintcache
-
-# Sass cache
-.sass-cache/
-
-# =============================================================================
-# SECURITY & SECRETS
-# =============================================================================
-
-# API keys and secrets (double check!)
 *.api-key
 secrets.json
 .secrets
 credentials.json
 
-# Application configuration with sensitive data
-config/config.json
+# ============================================
+# 📁 DADOS DO PROJETO (CRÍTICO)
+# ============================================
 
-# SSL certificates
-*.crt
-*.csr
-*.key
-*.pem
+# Logs da aplicação
+logs/
+logs/*.txt
+logs/*.log
 
-# =============================================================================
-# MISC
-# =============================================================================
+# Resultados gerados
+resultados/*
+!resultados/README.md
+!resultados/.gitkeep
 
-# Archive files
+# Imagens enviadas para análise
+imagens_para_analisar/*
+!imagens_para_analisar/.gitkeep
+!imagens_para_analisar/*.opus
+
+# Backups de relatórios
+*.xlsx.bak
+Relatorio_Backup_*.xlsx
+
+# ============================================
+# DESENVOLVIMENTO & TESTES
+# ============================================
+
+# Arquivos de teste
+test_*.py
+teste_*.py
+debug_*.py
+temp_*.py
+debug.html
+test.html
+
+# ============================================
+# DEPLOY & CONTAINERS
+# ============================================
+
+.vercel/
+.netlify/
+Procfile.dev
+docker-compose.override.yml
+
+# ============================================
+# DEPENDÊNCIAS FRONTEND
+# ============================================
+
+node_modules/
+*.min.js.map
+*.min.css.map
+
+# ============================================
+# ARQUIVOS COMPACTADOS
+# ============================================
+
 *.zip
-*.tar.gz
 *.rar
 *.7z
-
-# Database files (if any)
-*.db
-*.sqlite
-*.sqlite3
-
-# Documentation builds
-docs/_build/
-site/
-
-# Profiling data
-.prof
+*.tar.gz
