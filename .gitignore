@@ -217,6 +217,7 @@ imagens_para_analisar/*.webp
 imagens_para_analisar/*.svg
 imagens_para_analisar/*.txt
 !imagens_para_analisar/.gitkeep
+!imagens_para_analisar/*.opus
 
 # Backup files
 *.xlsx.bak
@@ -279,6 +280,9 @@ yarn-error.log*
 secrets.json
 .secrets
 credentials.json
+
+# Application configuration with sensitive data
+config/config.json
 
 # SSL certificates
 *.crt

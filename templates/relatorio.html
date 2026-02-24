@@ -493,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-window.abrirModalUnificacao = function() {
+window.abrirModalUnificacao = async function() {
   console.log('🔄 Tentando abrir modal de unificação...');
   
   // Garantir que o modal está inicializado
@@ -533,8 +533,139 @@ window.abrirModalUnificacao = function() {
   if (btnCancelar) btnCancelar.disabled = false;
   if (btnFechar) btnFechar.disabled = false;
   
-  console.log('✅ Abrindo modal...');
+  console.log('✅ Abrindo modal e carregando opções...');
   modalUnificacao.show();
+  
+  // Carregar opções de seções e colunas
+  await carregarOpcoesUnificacao();
+};
+
+// Carregar opções de seções e colunas para unificação
+async function carregarOpcoesUnificacao() {
+  try {
+    console.log('📡 Carregando opções de unificação...');
+    const response = await fetch('/api/opcoes_unificacao');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('📊 Opções recebidas:', data);
+    
+    // Preencher seções
+    const secoesContainer = document.getElementById('secoesUnificacao');
+    secoesContainer.innerHTML = '';
+    
+    data.secoes.forEach(secao => {
+      const div = document.createElement('div');
+      div.className = 'form-check';
+      div.innerHTML = `
+        <input class="form-check-input secao-checkbox-unificacao" type="checkbox" 
+               value="${secao}" id="secao_unif_${secao.replace(/\s+/g, '_')}" checked>
+        <label class="form-check-label" for="secao_unif_${secao.replace(/\s+/g, '_')}">
+          ${secao}
+        </label>
+      `;
+      
+      // Event listener para mostrar/ocultar colunas
+      const checkbox = div.querySelector('input');
+      checkbox.addEventListener('change', function() {
+        atualizarColunasUnificacao(data.colunas_por_secao);
+      });
+      
+      secoesContainer.appendChild(div);
+    });
+    
+    // Preencher colunas por seção
+    atualizarColunasUnificacao(data.colunas_por_secao);
+    
+    console.log('✅ Opções de unificação carregadas com sucesso');
+  } catch (error) {
+    console.error('❌ Erro ao carregar opções de unificação:', error);
+    alert('Erro ao carregar opções de unificação: ' + error.message);
+  }
+}
+
+// Atualizar colunas baseado nas seções selecionadas
+function atualizarColunasUnificacao(colunasPorSecao) {
+  const colunasContainer = document.getElementById('colunasUnificacao');
+  colunasContainer.innerHTML = '';
+  
+  // Obter seções selecionadas
+  const secoesSelecionadas = Array.from(document.querySelectorAll('.secao-checkbox-unificacao:checked'))
+    .map(cb => cb.value);
+  
+  if (secoesSelecionadas.length === 0) {
+    colunasContainer.innerHTML = '<div class="text-center text-muted"><small>Selecione pelo menos uma seção</small></div>';
+    return;
+  }
+  
+  for (const secao of secoesSelecionadas) {
+    const colunas = colunasPorSecao[secao];
+    if (!colunas) continue;
+    
+    const secaoDiv = document.createElement('div');
+    secaoDiv.id = `colunas_unif_${secao.replace(/\s+/g, '_')}`;
+    secaoDiv.className = 'mb-3';
+    secaoDiv.innerHTML = `<h6 class="mb-2">${secao}</h6>`;
+    
+    const colunasGrid = document.createElement('div');
+    colunasGrid.className = 'row';
+    
+    colunas.forEach(coluna => {
+      const div = document.createElement('div');
+      div.className = 'col-md-6';
+      
+      // Verificar se é coluna de caminho ou imagem - desmarcar por padrão
+      const colunaLower = coluna.toLowerCase();
+      const isImagemOuCaminho = colunaLower.includes('caminho') || 
+                                colunaLower.includes('imagem') ||
+                                colunaLower.includes('path') ||
+                                colunaLower.includes('image') ||
+                                colunaLower.includes('ver imagem');
+      
+      div.innerHTML = `
+        <div class="form-check">
+          <input class="form-check-input coluna-checkbox-unificacao" type="checkbox" 
+                 value="${coluna}" data-secao="${secao}" 
+                 id="col_unif_${secao.replace(/\s+/g, '_')}_${coluna.replace(/\s+/g, '_')}" 
+                 ${isImagemOuCaminho ? '' : 'checked'}>
+          <label class="form-check-label" for="col_unif_${secao.replace(/\s+/g, '_')}_${coluna.replace(/\s+/g, '_')}">
+            ${coluna}
+          </label>
+        </div>
+      `;
+      colunasGrid.appendChild(div);
+    });
+    
+    secaoDiv.appendChild(colunasGrid);
+    colunasContainer.appendChild(secaoDiv);
+  }
+}
+
+// Funções de seleção de seções e colunas para unificação
+window.selecionarTodasSecoesUnificacao = function(selecionar) {
+  try {
+    console.log('selecionarTodasSecoesUnificacao:', selecionar);
+    document.querySelectorAll('.secao-checkbox-unificacao').forEach(cb => {
+      cb.checked = selecionar;
+      cb.dispatchEvent(new Event('change'));
+    });
+  } catch (error) {
+    console.error('Erro em selecionarTodasSecoesUnificacao:', error);
+  }
+};
+
+window.selecionarTodasColunasUnificacao = function(selecionar) {
+  try {
+    console.log('selecionarTodasColunasUnificacao:', selecionar);
+    document.querySelectorAll('.coluna-checkbox-unificacao').forEach(cb => {
+      cb.checked = selecionar;
+    });
+  } catch (error) {
+    console.error('Erro em selecionarTodasColunasUnificacao:', error);
+  }
 };
 
 async function iniciarUnificacao() {
@@ -560,7 +691,34 @@ async function iniciarUnificacao() {
       }
     }
     
-    console.log('✅ Todos os elementos encontrados, mudando para estado de processamento...');
+    console.log('✅ Todos os elementos encontrados, coletando seleções...');
+    
+    // Obter formato selecionado
+    const formatoSelecionado = document.querySelector('input[name="formatoUnificacao"]:checked')?.value || 'xlsx';
+    console.log('📋 Formato selecionado:', formatoSelecionado);
+    
+    // Obter seções selecionadas
+    const secoesSelecionadas = Array.from(document.querySelectorAll('.secao-checkbox-unificacao:checked'))
+      .map(cb => cb.value);
+    
+    console.log('📑 Seções selecionadas:', secoesSelecionadas);
+    
+    if (secoesSelecionadas.length === 0) {
+      alert('Selecione pelo menos uma seção para unificar!');
+      return;
+    }
+    
+    // Obter colunas selecionadas por seção
+    const colunasPorSecao = {};
+    secoesSelecionadas.forEach(secao => {
+      const colunas = Array.from(document.querySelectorAll(`.coluna-checkbox-unificacao[data-secao="${secao}"]:checked`))
+        .map(cb => cb.value);
+      if (colunas.length > 0) {
+        colunasPorSecao[secao] = colunas;
+      }
+    });
+    
+    console.log('📊 Colunas por seção:', colunasPorSecao);
     
     // Mudar para estado de processamento
     elementos.explicacao.classList.add('d-none');
@@ -572,12 +730,23 @@ async function iniciarUnificacao() {
     elementos.btnFechar.disabled = true;
     
     console.log('📡 Enviando requisição para API de unificação...');
+    
+    // Preparar payload
+    const payload = {
+      formato: formatoSelecionado,
+      secoes: secoesSelecionadas,
+      colunas: colunasPorSecao
+    };
+    
+    console.log('📦 Payload:', payload);
+    
     // Chamar API de unificação
     const response = await fetch('/api/unificar_relatorio', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify(payload)
     });
     
     console.log('📥 Resposta recebida, status:', response.status);
@@ -1148,32 +1317,96 @@ window.addEventListener('unhandledrejection', function(event) {
       <div class="modal-body">
         <!-- Estado: Explicação inicial -->
         <div id="unificacaoExplicacao">
-          <div class="alert alert-info">
+          <div class="alert alert-info mb-3">
             <h6 class="alert-heading">
               <i class="bi bi-info-circle me-2"></i>Como funciona a unificação?
             </h6>
             <p class="mb-2">
-              Este processo analisa o relatório atual e consolida itens equivalentes:
+              Este processo consolida itens equivalentes:
             </p>
             <ul class="mb-2">
               <li><strong>Identifica produtos iguais</strong> (ex: "tomate", "Tomate", "TOMATE")</li>
               <li><strong>Soma quantidades</strong> com a mesma unidade de medida</li>
-              <li><strong>Gera auditoria completa</strong> com rastreabilidade de cada item</li>
+              <li><strong>Exporta apenas dados unificados</strong></li>
             </ul>
-            <div class="bg-light p-3 rounded">
-              <strong>Exemplo:</strong><br>
-              <span class="text-muted">Entrada:</span> tomate 2 kg, tomate 3 kg, cebola 1,232 kg, cebola 2 kg<br>
-              <span class="text-success">Saída:</span> tomate 5 kg, cebola 3,232 kg
+          </div>
+          
+          <!-- Seleção de formato de exportação -->
+          <div class="mb-3">
+            <label class="form-label fw-bold">
+              <i class="bi bi-file-earmark me-2"></i>Formato de Exportação:
+            </label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoXlsx" value="xlsx" checked>
+              <label class="btn btn-outline-success" for="formatoXlsx">
+                <i class="bi bi-file-earmark-excel me-2"></i>Excel (.xlsx)
+              </label>
+              
+              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoTxt" value="txt">
+              <label class="btn btn-outline-primary" for="formatoTxt">
+                <i class="bi bi-file-earmark-text me-2"></i>Texto (.txt)
+              </label>
             </div>
           </div>
+          
+          <!-- Seleção de Seções e Colunas -->
+          <div class="card mb-3">
+            <div class="card-header bg-light">
+              <h6 class="mb-0">
+                <i class="bi bi-sliders me-2"></i>Personalizar Exportação
+              </h6>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <!-- Seções -->
+                <div class="col-md-4">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Seções</h6>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-success btn-sm" onclick="selecionarTodasSecoesUnificacao(true)" title="Selecionar Todas">
+                        <i class="bi bi-check-all"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="selecionarTodasSecoesUnificacao(false)" title="Desmarcar Todas">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="secoesUnificacao" class="overflow-auto" style="max-height: 200px;">
+                    <div class="text-center text-muted">
+                      <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                      </div>
+                      <small class="d-block mt-2">Carregando seções...</small>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Colunas -->
+                <div class="col-md-8">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Colunas</h6>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-success btn-sm" onclick="selecionarTodasColunasUnificacao(true)" title="Selecionar Todas">
+                        <i class="bi bi-check-all"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="selecionarTodasColunasUnificacao(false)" title="Desmarcar Todas">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="colunasUnificacao" class="overflow-auto" style="max-height: 200px;">
+                    <div class="text-center text-muted">
+                      <small>Selecione uma seção para ver as colunas disponíveis</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle me-2"></i>
-            <strong>Importante:</strong> Será gerado um novo arquivo Excel contendo:
-            <ul class="mb-0 mt-2">
-              <li>Dados unificados (consolidados)</li>
-              <li>Auditoria completa (rastreamento dos registros originais)</li>
-              <li>Dados originais (para referência)</li>
-            </ul>
+            <strong>Importante:</strong> Será gerado um novo arquivo contendo apenas os dados consolidados das seções e colunas selecionadas.
           </div>
         </div>
         

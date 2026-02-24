@@ -168,14 +168,24 @@ def carregar_configuracao():
             "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
             "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
             "anthropic_api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "openrouter_api_key": os.environ.get("OPENROUTER_API_KEY", ""),
+            "modelo_selecionado": "gemini-2.5-flash-lite",
         },
         "processamento": {
-            "modelo_gemini": "gemini-1.5-flash",
+            "modelo_gemini": "gemini-2.5-flash-lite",
             "temperatura": 0.1,
-            "max_tokens": 1000,
-            "timeout": 30,
+            "max_tokens": 4000,
+            "timeout": 60,
+            "tamanho_lote": 12,
+            "max_workers": 1,
+            "request_delay": 13.0,
         },
-        "interface": {"tema": "claro", "auto_refresh": True, "logs_tempo_real": True},
+        "interface": {
+            "tema": "escuro",
+            "auto_refresh": True,
+            "logs_tempo_real": True,
+            "logs_detalhados_aplicacao": False,
+        },
     }
 
     try:
@@ -2462,104 +2472,347 @@ def extrair_quantidade_unidade(texto):
     return None, None
 
 
-def unificar_itens_por_produto(df, coluna_produto, coluna_quantidade):
-    """Unifica itens do DataFrame agrupando por produto e somando quantidades.
+def extrair_peso_de_detalhes(detalhes):
+    """Extrai valor numérico de peso do campo 'Detalhes' para AVARIAS.
+    
+    Regras:
+    - Se contém 'Peso:', extrair o valor numérico
+    - Tratar vírgulas como separadores de milhares: 1,500 -> 1.500
+    - Se peso for 'N/A' ou inexistente, retornar None
     
     Args:
-        df: DataFrame com os dados
-        coluna_produto: Nome da coluna que contém o nome do produto
-        coluna_quantidade: Nome da coluna que contém quantidade com unidade
+        detalhes: String com detalhes (ex: "Peso: 1,5 kg | Marca: XYZ")
+        
+    Returns:
+        float ou None: Valor numérico do peso ou None se não encontrado
+    """
+    import re
+    
+    if pd.isna(detalhes) or detalhes == "" or detalhes == "-":
+        return None
+    
+    detalhes_str = str(detalhes).strip()
+    
+    # Verificar se contém 'Peso' (case insensitive)
+    if 'peso' not in detalhes_str.lower():
+        return None
+    
+    # Verificar se é N/A
+    if 'n/a' in detalhes_str.lower():
+        return None
+    
+    # Padrão para extrair peso: "Peso: 1,5 kg" ou "Peso: 1.5 kg" ou "Peso: 1,500 kg"
+    # Primeiro: tentar padrão com vírgula como decimal
+    padrao_decimal = r'peso\s*:\s*([\d]+,[\d]+)\s*(?:kg|g)?'
+    match = re.search(padrao_decimal, detalhes_str.lower())
+    if match:
+        try:
+            # Substituir vírgula por ponto para conversão
+            peso_str = match.group(1).replace(',', '.')
+            return float(peso_str)
+        except:
+            pass
+    
+    # Segundo: tentar padrão com ponto como decimal ou vírgula como separador de milhares
+    padrao_ponto = r'peso\s*:\s*([\d]+[.,]?[\d]*)\s*(?:kg|g)?'
+    match = re.search(padrao_ponto, detalhes_str.lower())
+    if match:
+        try:
+            peso_str = match.group(1).replace(',', '.')
+            return float(peso_str)
+        except:
+            pass
+    
+    return None
+
+
+def extrair_quantidade_de_observacao(observacao):
+    """Extrai quantidade numérica do campo 'Observação da Mensagem' para USO INTERNO.
+    
+    Regras:
+    - Se houver números (ex: "2" ou "46 unid"), extrair e somar
+    - Se for "Nenhuma", retornar 1
+    - Se não houver números, retornar 1
+    
+    Args:
+        observacao: String com observação da mensagem
+        
+    Returns:
+        float: Quantidade extraída (default: 1)
+    """
+    import re
+    
+    if pd.isna(observacao) or observacao == "" or observacao == "-":
+        return 1.0
+    
+    observacao_str = str(observacao).strip()
+    
+    # Se for "Nenhuma", retornar 1
+    if observacao_str.lower() == "nenhuma":
+        return 1.0
+    
+    # Procurar por números na observação
+    # Padrões: "2", "46", "46 unid", "46 unidades", etc.
+    padrao = r'(\d+)(?:\s*(?:unid|unidade|unidades|un|und))?'
+    matches = re.findall(padrao, observacao_str.lower())
+    
+    if matches:
+        # Somar todos os números encontrados
+        total = sum(float(m) for m in matches)
+        return total
+    
+    # Se não encontrou números, retornar 1
+    return 1.0
+
+
+def extrair_codigo_barras_de_detalhes(detalhes):
+    """Extrai código de barras do campo 'Detalhes' para USO INTERNO.
+    
+    Args:
+        detalhes: String com detalhes (ex: "Marca: XYZ | Cód. Barras: 123456")
+        
+    Returns:
+        str: Código de barras ou "N/A" se não encontrado
+    """
+    import re
+    
+    if pd.isna(detalhes) or detalhes == "" or detalhes == "-":
+        return "N/A"
+    
+    detalhes_str = str(detalhes).strip()
+    
+    # Verificar se contém 'Cód. Barras' ou 'Codigo Barras'
+    if 'barras' not in detalhes_str.lower():
+        return "N/A"
+    
+    # Padrão para extrair código: "Cód. Barras: 123456" ou "Codigo Barras: 123456"
+    padrao = r'c[oó]d\.?\s*barras\s*:\s*([\d]+)'
+    match = re.search(padrao, detalhes_str.lower())
+    
+    if match:
+        return match.group(1)
+    
+    return "N/A"
+
+
+def unificar_itens_avarias(df):
+    """Unifica itens de AVARIAS agrupando por Produto e somando pesos.
+    
+    Regras:
+    - Chave de Agrupamento: Nome do Produto (normalizado)
+    - Se 'Detalhes' contém 'Peso', extrair valor numérico e somar
+    - Se peso for 'N/A' ou inexistente, contar como 1 unidade
+    - Saída: NOME DO PRODUTO | QUANTIDADE TOTAL (kg ou un)
+    
+    Args:
+        df: DataFrame com dados de AVARIAS
         
     Returns:
         tuple: (df_unificado, auditoria_dict)
-            - df_unificado: DataFrame com itens consolidados
-            - auditoria_dict: Dicionário mapeando produto unificado -> lista de registros originais
     """
-    if df.empty or coluna_produto not in df.columns or coluna_quantidade not in df.columns:
+    if df.empty:
+        return df.copy(), {}
+    
+    # Verificar colunas necessárias
+    if "Produto" not in df.columns or "Detalhes" not in df.columns:
         return df.copy(), {}
     
     # Estrutura para armazenar agrupamentos
-    grupos = {}  # {(produto_normalizado, unidade): {"quantidade_total": X, "registros": [...]}}
-    auditoria = {}  # {produto_unificado: [lista de registros originais]}
+    # {produto_normalizado: {"produto_original": str, "quantidade_kg": float, "quantidade_un": int, "registros": [...]}}
+    grupos = {}
     
     for idx, row in df.iterrows():
-        produto = row.get(coluna_produto, "")
-        quantidade_texto = row.get(coluna_quantidade, "")
+        produto = row.get("Produto", "")
+        detalhes = row.get("Detalhes", "")
         
         # Normalizar produto para agrupamento
         produto_norm = normalizar_texto(produto)
         
         if not produto_norm:
             continue
-            
-        # Extrair quantidade e unidade
-        quantidade, unidade = extrair_quantidade_unidade(quantidade_texto)
         
-        # Se não conseguiu extrair, usar quantidade como texto
-        if quantidade is None:
-            unidade = "unidade"
-            quantidade = 1.0
+        # Extrair peso dos detalhes
+        peso = extrair_peso_de_detalhes(detalhes)
         
-        # Criar chave do grupo
-        chave = (produto_norm, unidade)
-        
-        # Adicionar ao grupo
-        if chave not in grupos:
-            grupos[chave] = {
-                "produto_original": produto,  # Manter nome original (primeiro encontrado)
-                "quantidade_total": 0.0,
-                "unidade": unidade,
+        # Inicializar grupo se não existir
+        if produto_norm not in grupos:
+            grupos[produto_norm] = {
+                "produto_original": produto.strip().upper(),  # Converter para maiúsculas
+                "quantidade_kg": 0.0,
+                "quantidade_un": 0,
                 "registros": []
             }
         
-        grupos[chave]["quantidade_total"] += quantidade
-        grupos[chave]["registros"].append({
+        # Adicionar quantidade ao grupo
+        if peso is not None and peso > 0:
+            grupos[produto_norm]["quantidade_kg"] += peso
+        else:
+            grupos[produto_norm]["quantidade_un"] += 1
+        
+        grupos[produto_norm]["registros"].append({
             "index": idx,
             "registro_completo": row.to_dict(),
-            "quantidade_original": quantidade_texto,
-            "quantidade_extraida": quantidade
+            "peso_extraido": peso
         })
     
     # Criar DataFrame unificado
     registros_unificados = []
+    auditoria = {}
     
-    for (produto_norm, unidade), info in grupos.items():
+    # Ordenar por nome do produto (alfabética)
+    for produto_norm in sorted(grupos.keys()):
+        info = grupos[produto_norm]
+        
         # Pegar o primeiro registro como base
         registro_base = info["registros"][0]["registro_completo"].copy()
         
-        # Atualizar com dados unificados
-        produto_unificado = info["produto_original"]
-        quantidade_total = info["quantidade_total"]
-        
-        # Formatar quantidade unificada
-        if quantidade_total == int(quantidade_total):
-            quantidade_formatada = f"{int(quantidade_total)} {unidade}"
+        # Determinar quantidade final
+        if info["quantidade_kg"] > 0:
+            # Formatar peso em kg
+            quantidade_formatada = f"{info['quantidade_kg']:.3f} kg".replace('.', ',')
         else:
-            quantidade_formatada = f"{quantidade_total:.3f} {unidade}".replace('.', ',')
+            # Usar unidades
+            quantidade_formatada = f"{info['quantidade_un']} un"
         
-        registro_base[coluna_quantidade] = quantidade_formatada
-        registro_base[coluna_produto] = produto_unificado
-        
-        # Adicionar informações de consolidação
+        # Atualizar registro
+        registro_base["Produto"] = info["produto_original"]
+        registro_base["Quantidade Total"] = quantidade_formatada
         registro_base["Qtd_Registros_Consolidados"] = len(info["registros"])
         
         registros_unificados.append(registro_base)
         
         # Guardar auditoria
-        chave_auditoria = f"{produto_unificado} ({quantidade_formatada})"
+        chave_auditoria = f"{info['produto_original']} ({quantidade_formatada})"
         auditoria[chave_auditoria] = info["registros"]
     
     # Criar DataFrame unificado
     if registros_unificados:
         df_unificado = pd.DataFrame(registros_unificados)
+        # Reorganizar colunas: Produto, Quantidade Total, outras colunas
+        colunas = ["Produto", "Quantidade Total"]
+        colunas += [c for c in df_unificado.columns if c not in colunas]
+        df_unificado = df_unificado[colunas]
     else:
         df_unificado = df.copy()
     
     return df_unificado, auditoria
 
 
-def processar_unificacao_completa():
+def unificar_itens_uso_interno(df):
+    """Unifica itens de USO INTERNO agrupando por Produto + Código de Barras e somando quantidades.
+    
+    Regras:
+    - Chave de Agrupamento: Nome do Produto + Código de Barras
+    - Analisar 'Observação da Mensagem' para extrair quantidades
+    - Se observação for "Nenhuma", contar como 1
+    - Saída: NOME DO PRODUTO | QUANTIDADE TOTAL | CÓDIGO DE BARRAS
+    
+    Args:
+        df: DataFrame com dados de USO INTERNO
+        
+    Returns:
+        tuple: (df_unificado, auditoria_dict)
+    """
+    if df.empty:
+        return df.copy(), {}
+    
+    # Verificar colunas necessárias
+    if "Produto" not in df.columns or "Detalhes" not in df.columns or "Observação da Mensagem" not in df.columns:
+        return df.copy(), {}
+    
+    # Estrutura para armazenar agrupamentos
+    # {(produto_normalizado, codigo_barras): {"produto_original": str, "codigo_barras": str, "quantidade_total": float, "registros": [...]}}
+    grupos = {}
+    
+    for idx, row in df.iterrows():
+        produto = row.get("Produto", "")
+        detalhes = row.get("Detalhes", "")
+        observacao = row.get("Observação da Mensagem", "")
+        
+        # Normalizar produto para agrupamento
+        produto_norm = normalizar_texto(produto)
+        
+        if not produto_norm:
+            continue
+        
+        # Extrair código de barras
+        codigo_barras = extrair_codigo_barras_de_detalhes(detalhes)
+        
+        # Extrair quantidade da observação
+        quantidade = extrair_quantidade_de_observacao(observacao)
+        
+        # Criar chave do grupo
+        chave = (produto_norm, codigo_barras)
+        
+        # Inicializar grupo se não existir
+        if chave not in grupos:
+            grupos[chave] = {
+                "produto_original": produto.strip().upper(),  # Converter para maiúsculas
+                "codigo_barras": codigo_barras,
+                "quantidade_total": 0.0,
+                "registros": []
+            }
+        
+        # Adicionar quantidade ao grupo
+        grupos[chave]["quantidade_total"] += quantidade
+        
+        grupos[chave]["registros"].append({
+            "index": idx,
+            "registro_completo": row.to_dict(),
+            "quantidade_extraida": quantidade
+        })
+    
+    # Criar DataFrame unificado
+    registros_unificados = []
+    auditoria = {}
+    
+    # Ordenar por nome do produto (alfabética)
+    chaves_ordenadas = sorted(grupos.keys(), key=lambda x: x[0])
+    
+    for chave in chaves_ordenadas:
+        info = grupos[chave]
+        
+        # Pegar o primeiro registro como base
+        registro_base = info["registros"][0]["registro_completo"].copy()
+        
+        # Formatar quantidade
+        quantidade_total = info["quantidade_total"]
+        if quantidade_total == int(quantidade_total):
+            quantidade_formatada = str(int(quantidade_total))
+        else:
+            quantidade_formatada = f"{quantidade_total:.2f}".replace('.', ',')
+        
+        # Atualizar registro
+        registro_base["Produto"] = info["produto_original"]
+        registro_base["Quantidade Total"] = quantidade_formatada
+        registro_base["Código de Barras"] = info["codigo_barras"]
+        registro_base["Qtd_Registros_Consolidados"] = len(info["registros"])
+        
+        registros_unificados.append(registro_base)
+        
+        # Guardar auditoria
+        chave_auditoria = f"{info['produto_original']} - {info['codigo_barras']} ({quantidade_formatada})"
+        auditoria[chave_auditoria] = info["registros"]
+    
+    # Criar DataFrame unificado
+    if registros_unificados:
+        df_unificado = pd.DataFrame(registros_unificados)
+        # Reorganizar colunas: Produto, Quantidade Total, Código de Barras, outras colunas
+        colunas = ["Produto", "Quantidade Total", "Código de Barras"]
+        colunas += [c for c in df_unificado.columns if c not in colunas]
+        df_unificado = df_unificado[colunas]
+    else:
+        df_unificado = df.copy()
+    
+    return df_unificado, auditoria
+
+
+def processar_unificacao_completa(secoes_filtro=None, colunas_filtro=None):
     """Processa todo o relatório aplicando unificação e gerando planilha de auditoria.
+    
+    Args:
+        secoes_filtro: Lista de seções para processar (None = todas)
+        colunas_filtro: Dicionário {secao: [colunas]} para filtrar colunas (None = todas)
     
     Returns:
         tuple: (sucesso, mensagem, caminho_arquivo_gerado)
@@ -2584,6 +2837,10 @@ def processar_unificacao_completa():
             
             # Processar cada sheet
             for sheet_name, df in sheets.items():
+                
+                # Verificar se a seção deve ser processada
+                if secoes_filtro and sheet_name not in secoes_filtro:
+                    continue
                 
                 if df.empty:
                     # Sheet vazia, copiar como está
@@ -2611,39 +2868,42 @@ def processar_unificacao_completa():
                         if "quantidade" in col_lower or "qtd" in col_lower or "peso" in col_lower:
                             coluna_quantidade = col
                 
-                if deve_unificar and coluna_produto and coluna_quantidade:
-                    # Aplicar unificação
-                    df_unificado, auditoria = unificar_itens_por_produto(
-                        df, coluna_produto, coluna_quantidade
-                    )
+                if deve_unificar and coluna_produto:
+                    # Determinar tipo de sheet e aplicar unificação apropriada
+                    if "avaria" in sheet_lower:
+                        # Processar AVARIAS
+                        df_unificado, auditoria = unificar_itens_avarias(df)
+                        tipo_processamento = "AVARIAS"
+                    elif "uso interno" in sheet_lower:
+                        # Processar USO INTERNO
+                        df_unificado, auditoria = unificar_itens_uso_interno(df)
+                        tipo_processamento = "USO INTERNO"
+                    else:
+                        # Fallback: não processar
+                        df_unificado = df.copy()
+                        auditoria = {}
+                        tipo_processamento = "OUTRO"
                     
-                    # Salvar sheet unificada
-                    df_unificado.to_excel(writer, sheet_name=f"{sheet_name} - Unificado", index=False)
+                    # Aplicar filtro de colunas se fornecido
+                    if colunas_filtro and sheet_name in colunas_filtro:
+                        colunas_selecionadas = colunas_filtro[sheet_name]
+                        colunas_existentes = [col for col in colunas_selecionadas if col in df_unificado.columns]
+                        if colunas_existentes:
+                            df_unificado = df_unificado[colunas_existentes]
                     
-                    # Criar sheet de auditoria
-                    registros_auditoria = []
-                    for produto_unificado, lista_registros in auditoria.items():
-                        for reg in lista_registros:
-                            registro_audit = reg["registro_completo"].copy()
-                            registro_audit["Produto_Unificado"] = produto_unificado
-                            registro_audit["Quantidade_Extraida"] = reg["quantidade_extraida"]
-                            registros_auditoria.append(registro_audit)
-                    
-                    if registros_auditoria:
-                        df_auditoria = pd.DataFrame(registros_auditoria)
-                        # Reordenar colunas para colocar as de auditoria no início
-                        cols = df_auditoria.columns.tolist()
-                        cols_audit = ["Produto_Unificado", "Quantidade_Extraida"]
-                        cols_restantes = [c for c in cols if c not in cols_audit]
-                        df_auditoria = df_auditoria[cols_audit + cols_restantes]
-                        
-                        df_auditoria.to_excel(writer, sheet_name=f"{sheet_name} - Auditoria", index=False)
-                    
-                    # Também salvar a sheet original para referência
-                    df.to_excel(writer, sheet_name=f"{sheet_name} - Original", index=False)
+                    # Salvar SOMENTE a sheet unificada
+                    df_unificado.to_excel(writer, sheet_name=sheet_name, index=False)
                     
                 else:
-                    # Sheet não unificável, copiar como está
+                    # Sheet não unificável
+                    # Aplicar filtro de colunas se fornecido
+                    if colunas_filtro and sheet_name in colunas_filtro:
+                        colunas_selecionadas = colunas_filtro[sheet_name]
+                        colunas_existentes = [col for col in colunas_selecionadas if col in df.columns]
+                        if colunas_existentes:
+                            df = df[colunas_existentes]
+                    
+                    # Copiar como está
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         return True, f"Relatório unificado gerado com sucesso", arquivo_unificado
@@ -2655,11 +2915,152 @@ def processar_unificacao_completa():
         return False, f"Erro ao processar unificação: {str(e)}", None
 
 
+def processar_unificacao_txt(secoes_filtro=None, colunas_filtro=None):
+    """Processa todo o relatório aplicando unificação e gerando arquivo TXT.
+    
+    Args:
+        secoes_filtro: Lista de seções para processar (None = todas)
+        colunas_filtro: Dicionário {secao: [colunas]} para filtrar colunas (None = todas)
+    
+    Returns:
+        tuple: (sucesso, mensagem, caminho_arquivo_gerado)
+    """
+    try:
+        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            return False, "Relatório original não encontrado", None
+        
+        # Ler arquivo Excel original
+        sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+        
+        # Preparar arquivo de saída
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        arquivo_unificado = os.path.join(
+            BASE_PATH, 
+            "resultados", 
+            f"Relatorio_Unificado_{timestamp}.txt"
+        )
+        
+        conteudo_txt = []
+        conteudo_txt.append("="*80)
+        conteudo_txt.append("RELATÓRIO UNIFICADO DE AVARIAS E USO INTERNO")
+        conteudo_txt.append(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        conteudo_txt.append("="*80)
+        conteudo_txt.append("")
+        
+        # Processar cada sheet
+        for sheet_name, df in sheets.items():
+            # Verificar se a seção deve ser processada
+            if secoes_filtro and sheet_name not in secoes_filtro:
+                continue
+                
+            if df.empty:
+                continue
+            
+            # Identificar se é uma sheet que deve ser unificada
+            sheet_lower = sheet_name.lower()
+            if "avaria" in sheet_lower or "uso interno" in sheet_lower:
+                # Verificar se tem coluna Produto
+                if "Produto" not in df.columns:
+                    continue
+                
+                # Determinar tipo de sheet e aplicar unificação apropriada
+                if "avaria" in sheet_lower:
+                    # Processar AVARIAS
+                    df_unificado, auditoria = unificar_itens_avarias(df)
+                    tipo_processamento = "AVARIAS"
+                elif "uso interno" in sheet_lower:
+                    # Processar USO INTERNO
+                    df_unificado, auditoria = unificar_itens_uso_interno(df)
+                    tipo_processamento = "USO INTERNO"
+                else:
+                    continue
+                
+                # Aplicar filtro de colunas se fornecido
+                if colunas_filtro and sheet_name in colunas_filtro:
+                    colunas_selecionadas = colunas_filtro[sheet_name]
+                    colunas_existentes = [col for col in colunas_selecionadas if col in df_unificado.columns]
+                    if colunas_existentes:
+                        df_unificado = df_unificado[colunas_existentes]
+                
+                # Adicionar ao conteúdo TXT
+                conteudo_txt.append("-"*80)
+                conteudo_txt.append(f"SEÇÃO: {sheet_name.upper()}")
+                conteudo_txt.append("-"*80)
+                conteudo_txt.append("")
+                
+                if tipo_processamento == "AVARIAS":
+                    # Formato: PRODUTO | QUANTIDADE TOTAL
+                    conteudo_txt.append("PRODUTO | QUANTIDADE TOTAL")
+                    conteudo_txt.append("-"*80)
+                    
+                    for idx, row in df_unificado.iterrows():
+                        produto = row.get("Produto", "N/A")
+                        quantidade = row.get("Quantidade Total", "N/A")
+                        conteudo_txt.append(f"{produto} | {quantidade}")
+                
+                elif tipo_processamento == "USO INTERNO":
+                    # Formato: PRODUTO | QUANTIDADE TOTAL | CÓDIGO DE BARRAS
+                    conteudo_txt.append("PRODUTO | QUANTIDADE TOTAL | CÓDIGO DE BARRAS")
+                    conteudo_txt.append("-"*80)
+                    
+                    for idx, row in df_unificado.iterrows():
+                        produto = row.get("Produto", "N/A")
+                        quantidade = row.get("Quantidade Total", "N/A")
+                        codigo_barras = row.get("Código de Barras", "N/A")
+                        conteudo_txt.append(f"{produto} | {quantidade} | {codigo_barras}")
+                
+                conteudo_txt.append("")
+                conteudo_txt.append(f"Total de itens: {len(df_unificado)}")
+                conteudo_txt.append("")
+        
+        conteudo_txt.append("="*80)
+        conteudo_txt.append("FIM DO RELATÓRIO")
+        conteudo_txt.append("="*80)
+        
+        # Salvar arquivo TXT
+        with open(arquivo_unificado, "w", encoding="utf-8") as f:
+            f.write("\n".join(conteudo_txt))
+        
+        return True, f"Relatório unificado TXT gerado com sucesso", arquivo_unificado
+        
+    except Exception as e:
+        import traceback
+        erro_completo = traceback.format_exc()
+        print(f"❌ Erro ao processar unificação TXT: {erro_completo}")
+        return False, f"Erro ao processar unificação TXT: {str(e)}", None
+
+
 @app.route("/api/unificar_relatorio", methods=["POST"])
 def api_unificar_relatorio():
     """API para processar unificação do relatório."""
     try:
-        sucesso, mensagem, arquivo_gerado = processar_unificacao_completa()
+        # Obter formato do request (padrão: xlsx)
+        data = request.get_json() or {}
+        formato = data.get("formato", "xlsx").lower()
+        secoes_json = data.get("secoes")
+        colunas_json = data.get("colunas")
+        
+        # Validar formato
+        if formato not in ["xlsx", "txt"]:
+            return jsonify({
+                "success": False,
+                "message": "Formato inválido. Use 'xlsx' ou 'txt'."
+            }), 400
+        
+        # Processar filtros se fornecidos
+        secoes_filtro = None
+        colunas_filtro = None
+        
+        if secoes_json:
+            secoes_filtro = secoes_json
+        if colunas_json:
+            colunas_filtro = colunas_json
+        
+        # Processar conforme o formato
+        if formato == "txt":
+            sucesso, mensagem, arquivo_gerado = processar_unificacao_txt(secoes_filtro, colunas_filtro)
+        else:
+            sucesso, mensagem, arquivo_gerado = processar_unificacao_completa(secoes_filtro, colunas_filtro)
         
         if sucesso:
             # Retornar link para download
@@ -2668,7 +3069,8 @@ def api_unificar_relatorio():
                 "success": True,
                 "message": mensagem,
                 "download_url": url_for("download_relatorio_unificado", filename=filename),
-                "filename": filename
+                "filename": filename,
+                "formato": formato
             })
         else:
             return jsonify({
@@ -2708,6 +3110,117 @@ def download_relatorio_unificado(filename):
     except Exception as e:
         print(f"❌ Erro no download do relatório unificado: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/opcoes_unificacao")
+def api_opcoes_unificacao():
+    """API para obter seções e colunas disponíveis para unificação."""
+    try:
+        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+            return jsonify({"error": "Relatório não encontrado"}), 404
+        
+        # Ler arquivo Excel original
+        sheets = pd.read_excel(ARQUIVO_SAIDA_EXCEL, sheet_name=None, engine="openpyxl")
+        
+        # Processar cada sheet para obter colunas após unificação
+        secoes = []
+        colunas_por_secao = {}
+        
+        for sheet_name, df in sheets.items():
+            if df.empty:
+                continue
+            
+            sheet_lower = sheet_name.lower()
+            
+            # Verificar se é uma seção unificável
+            if "avaria" in sheet_lower or "uso interno" in sheet_lower:
+                secoes.append(sheet_name)
+                
+                # Obter colunas após unificação
+                if "Produto" in df.columns:
+                    if "avaria" in sheet_lower:
+                        df_unificado, _ = unificar_itens_avarias(df)
+                    elif "uso interno" in sheet_lower:
+                        df_unificado, _ = unificar_itens_uso_interno(df)
+                    else:
+                        df_unificado = df
+                    
+                    colunas_por_secao[sheet_name] = df_unificado.columns.tolist()
+                else:
+                    colunas_por_secao[sheet_name] = df.columns.tolist()
+            else:
+                # Incluir outras seções também
+                secoes.append(sheet_name)
+                colunas_por_secao[sheet_name] = df.columns.tolist()
+        
+        return jsonify({
+            "secoes": secoes,
+            "colunas_por_secao": colunas_por_secao
+        })
+    except Exception as e:
+        import traceback
+        erro_completo = traceback.format_exc()
+        print(f"❌ Erro ao obter opções de unificação: {erro_completo}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/listar_modelos/<provider>")
+def api_listar_modelos(provider):
+    """
+    API para listar modelos disponíveis de um provedor em tempo real.
+    
+    Args:
+        provider: Nome do provedor (gemini, openai, claude, openrouter)
+    
+    Returns:
+        JSON com lista de modelos disponíveis
+    """
+    try:
+        from src.ai_providers import AIProviderFactory
+        
+        # Normalizar nome do provedor
+        provider = provider.lower()
+        
+        # Obter configuração para pegar API key
+        config = carregar_configuracao()
+        api_keys = config.get("api", {})
+        
+        # Mapear nomes de provedores para chaves de configuração
+        provider_key_map = {
+            "gemini": "gemini_api_key",
+            "openai": "openai_api_key",
+            "claude": "anthropic_api_key",
+            "anthropic": "anthropic_api_key",
+            "openrouter": "openrouter_api_key"
+        }
+        
+        # Obter API key do provedor
+        api_key = None
+        if provider in provider_key_map:
+            api_key = api_keys.get(provider_key_map[provider], "")
+        
+        # Obter lista de modelos
+        modelos = AIProviderFactory.obter_modelos(provider, api_key)
+        
+        if not modelos:
+            return jsonify({
+                "error": f"Provedor '{provider}' não encontrado ou sem modelos disponíveis"
+            }), 404
+        
+        return jsonify({
+            "provider": provider,
+            "modelos": modelos,
+            "success": True
+        })
+        
+    except Exception as e:
+        import traceback
+        erro_completo = traceback.format_exc()
+        print(f"❌ Erro ao listar modelos do provedor {provider}: {erro_completo}")
+        return jsonify({
+            "error": str(e),
+            "success": False
+        }), 500
 
 
 @app.route("/api/testar_configuracao")
@@ -2826,6 +3339,16 @@ if __name__ == "__main__":
     if "VERCEL" not in os.environ:
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         os.makedirs(os.path.join(BASE_PATH, "resultados"), exist_ok=True)
+        os.makedirs(os.path.join(BASE_PATH, "logs"), exist_ok=True)
+        os.makedirs(os.path.join(BASE_PATH, "config"), exist_ok=True)
+        
+        # Inicializar config.json com valores padrão se não existir
+        if not os.path.exists(CONFIG_FILE):
+            print("📝 Criando arquivo de configuração padrão...")
+            carregar_configuracao()  # Isso criará o arquivo automaticamente
+            print(f"✅ Arquivo de configuração criado em: {CONFIG_FILE}")
+        else:
+            print(f"✅ Arquivo de configuração encontrado: {CONFIG_FILE}")
 
     print("🚀 Iniciando Interface Web do Analisador de Avarias")
     print("📱 Acesse: http://localhost:5000")

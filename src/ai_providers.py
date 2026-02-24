@@ -106,12 +106,39 @@ class GeminiProvider(AIProvider):
         return response.text, tokens
     
     def get_modelos_disponiveis(self) -> List[str]:
-        """Modelos Gemini disponíveis com suporte a visão/multimodal."""
-        return [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-3-flash",
-        ]
+        """Busca modelos Gemini disponíveis com suporte a visão/multimodal em tempo real."""
+        try:
+            # Listar todos os modelos disponíveis
+            modelos = []
+            for m in self.genai.list_models():
+                # Filtrar apenas modelos que suportam generateContent (multimodal/visão)
+                if 'generateContent' in m.supported_generation_methods:
+                    # Adicionar o nome do modelo
+                    modelos.append(m.name.replace('models/', ''))
+            
+            # Se não conseguiu buscar, retornar lista padrão
+            if not modelos:
+                return [
+                    "gemini-2.5",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-flash-lite",
+                    "gemini-2.5-pro",
+                    "gemini-2.0-flash-exp",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-1.5-pro",
+                ]
+            
+            return sorted(modelos)
+        except Exception as e:
+            print(f"⚠️ Erro ao buscar modelos Gemini: {e}")
+            # Retornar lista padrão em caso de erro
+            return [
+                "gemini-2.0-flash-exp",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-1.5-pro",
+            ]
     
     @property
     def nome_provedor(self) -> str:
@@ -177,13 +204,40 @@ class OpenAIProvider(AIProvider):
         return texto, tokens
     
     def get_modelos_disponiveis(self) -> List[str]:
-        """Modelos OpenAI disponíveis com suporte a visão."""
-        return [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4-turbo",
-            "gpt-4-vision-preview",
-        ]
+        """Busca modelos OpenAI disponíveis com suporte a visão em tempo real."""
+        try:
+            # Listar todos os modelos disponíveis
+            modelos_response = self.client.models.list()
+            modelos = []
+            
+            # Filtrar modelos com suporte a visão
+            modelos_com_visao = ['gpt-4o', 'gpt-4-turbo', 'gpt-4-vision', 'vision']
+            
+            for modelo in modelos_response.data:
+                modelo_id = modelo.id
+                # Adicionar se contém palavras-chave de visão ou é GPT-4o
+                if any(keyword in modelo_id.lower() for keyword in modelos_com_visao):
+                    modelos.append(modelo_id)
+            
+            # Se não conseguiu buscar, retornar lista padrão
+            if not modelos:
+                return [
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "gpt-4-turbo",
+                    "gpt-4-vision-preview",
+                ]
+            
+            return sorted(modelos, reverse=True)  # Mais recentes primeiro
+        except Exception as e:
+            print(f"⚠️ Erro ao buscar modelos OpenAI: {e}")
+            # Retornar lista padrão em caso de erro
+            return [
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-4-turbo",
+                "gpt-4-vision-preview",
+            ]
     
     @property
     def nome_provedor(self) -> str:
@@ -253,7 +307,8 @@ class ClaudeProvider(AIProvider):
         return texto, tokens
     
     def get_modelos_disponiveis(self) -> List[str]:
-        """Modelos Claude disponíveis."""
+        """Modelos Claude disponíveis (lista atualizada - Anthropic não fornece API de listagem)."""
+        # Anthropic não fornece API para listar modelos, então mantemos lista atualizada
         return [
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",
@@ -330,15 +385,56 @@ class OpenRouterProvider(AIProvider):
         return texto, tokens
     
     def get_modelos_disponiveis(self) -> List[str]:
-        """Modelos OpenRouter com suporte a visão."""
-        return [
-            "anthropic/claude-3.5-sonnet",
-            "google/gemini-pro-1.5",
-            "openai/gpt-4o",
-            "openai/gpt-4-turbo",
-            "meta-llama/llama-3.2-90b-vision",
-            "qwen/qwen-2-vl-72b",
-        ]
+        """Busca modelos OpenRouter com suporte a visão em tempo real."""
+        try:
+            import requests
+            
+            # Buscar modelos da API do OpenRouter
+            response = requests.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                modelos = []
+                
+                # Filtrar modelos com suporte a visão
+                for modelo in data.get('data', []):
+                    # Verificar se o modelo suporta visão
+                    if modelo.get('architecture', {}).get('modality') == 'multimodal' or \
+                       'vision' in modelo.get('id', '').lower() or \
+                       'gemini' in modelo.get('id', '').lower() or \
+                       'gpt-4o' in modelo.get('id', '').lower() or \
+                       'claude-3' in modelo.get('id', '').lower():
+                        modelos.append(modelo['id'])
+                
+                if modelos:
+                    return sorted(modelos)
+            
+            # Se falhar, retornar lista padrão
+            return [
+                "anthropic/claude-3.5-sonnet",
+                "google/gemini-pro-1.5",
+                "google/gemini-flash-1.5",
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "meta-llama/llama-3.2-90b-vision",
+                "qwen/qwen-2-vl-72b",
+            ]
+        except Exception as e:
+            print(f"⚠️ Erro ao buscar modelos OpenRouter: {e}")
+            # Retornar lista padrão em caso de erro
+            return [
+                "anthropic/claude-3.5-sonnet",
+                "google/gemini-pro-1.5",
+                "google/gemini-flash-1.5",
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "meta-llama/llama-3.2-90b-vision",
+                "qwen/qwen-2-vl-72b",
+            ]
     
     @property
     def nome_provedor(self) -> str:
@@ -391,12 +487,13 @@ class AIProviderFactory:
         return list(cls.PROVIDERS.keys())
     
     @classmethod
-    def obter_modelos(cls, provider_name: str) -> List[str]:
+    def obter_modelos(cls, provider_name: str, api_key: str = None) -> List[str]:
         """
-        Obtém lista de modelos disponíveis para um provedor.
+        Obtém lista de modelos disponíveis para um provedor em tempo real.
         
         Args:
             provider_name: Nome do provedor
+            api_key: API key para autenticação (opcional, necessário para alguns provedores)
         
         Returns:
             Lista de modelos
@@ -406,14 +503,28 @@ class AIProviderFactory:
         if provider_name not in cls.PROVIDERS:
             return []
         
-        # Criar instância temporária apenas para obter modelos
+        # Criar instância para obter modelos
         provider_class = cls.PROVIDERS[provider_name]
         try:
-            temp_instance = provider_class("dummy_key", "dummy_model", {})
+            # Se não tiver API key, retornar lista padrão
+            if not api_key:
+                # Para Claude, não precisa de API key para listar (lista hardcoded)
+                if provider_name in ["claude", "anthropic"]:
+                    temp_instance = provider_class("dummy_key", "dummy_model", {})
+                    return temp_instance.get_modelos_disponiveis()
+                return []
+            
+            # Criar instância com API key real para buscar modelos
+            temp_instance = provider_class(api_key, "dummy_model", {})
             return temp_instance.get_modelos_disponiveis()
-        except:
-            # Se falhar, retornar lista padrão
-            return []
+        except Exception as e:
+            print(f"⚠️ Erro ao obter modelos de {provider_name}: {e}")
+            # Em caso de erro, tentar retornar lista padrão
+            try:
+                temp_instance = provider_class("dummy_key", "dummy_model", {})
+                return temp_instance.get_modelos_disponiveis()
+            except:
+                return []
 
 
 def carregar_provedor_de_config(config_path: str = None) -> AIProvider:

@@ -78,7 +78,7 @@
                 <label for="apiModel" class="form-label fw-bold">
                   <i class="bi bi-cpu me-2"></i>Modelo
                 </label>
-                <select class="form-select" id="apiModel" name="model">
+                <select class="form-select" id="apiModel" name="model" data-selected-model="{{ config.api.modelo_selecionado or '' }}">
                   <option value="">Carregando modelos...</option>
                 </select>
                 <div class="form-text">Escolha o modelo específico do provedor selecionado</div>
@@ -430,22 +430,69 @@ document.addEventListener('DOMContentLoaded', function() {
   const configApiForm = document.getElementById('configApiForm');
   const configAdvancedForm = document.getElementById('configAdvancedForm');
 
-  // Atualizar modelos quando provedor mudar
-  function atualizarModelos() {
+  // Atualizar modelos quando provedor mudar - busca dinâmica via API
+  async function atualizarModelos() {
     const provider = apiProvider.value;
-    const modelos = MODELOS_POR_PROVEDOR[provider] || [];
     
-    apiModel.innerHTML = '';
-    modelos.forEach(modelo => {
-      const option = document.createElement('option');
-      option.value = modelo;
-      option.textContent = modelo;
-      apiModel.appendChild(option);
-    });
+    // Mostrar loading
+    apiModel.innerHTML = '<option value="">Carregando modelos...</option>';
+    apiModel.disabled = true;
     
-    // Selecionar primeiro modelo por padrão
-    if (modelos.length > 0) {
-      apiModel.value = modelos[0];
+    try {
+      // Buscar modelos disponíveis da API em tempo real
+      const response = await fetch(`/api/listar_modelos/${provider}`);
+      const data = await response.json();
+      
+      if (data.success && data.modelos && data.modelos.length > 0) {
+        // Limpar e popular com modelos reais
+        apiModel.innerHTML = '';
+        data.modelos.forEach(modelo => {
+          const option = document.createElement('option');
+          option.value = modelo;
+          option.textContent = modelo;
+          apiModel.appendChild(option);
+        });
+        
+        // Tentar manter seleção anterior ou selecionar primeiro
+        const modeloAtualSelecionado = apiModel.getAttribute('data-selected-model');
+        if (modeloAtualSelecionado && data.modelos.includes(modeloAtualSelecionado)) {
+          apiModel.value = modeloAtualSelecionado;
+        } else if (data.modelos.length > 0) {
+          apiModel.value = data.modelos[0];
+        }
+      } else {
+        // Fallback para lista estática em caso de erro
+        const modelos = MODELOS_POR_PROVEDOR[provider] || [];
+        apiModel.innerHTML = '';
+        modelos.forEach(modelo => {
+          const option = document.createElement('option');
+          option.value = modelo;
+          option.textContent = modelo;
+          apiModel.appendChild(option);
+        });
+        
+        if (modelos.length > 0) {
+          apiModel.value = modelos[0];
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar modelos:', error);
+      
+      // Fallback para lista estática
+      const modelos = MODELOS_POR_PROVEDOR[provider] || [];
+      apiModel.innerHTML = '';
+      modelos.forEach(modelo => {
+        const option = document.createElement('option');
+        option.value = modelo;
+        option.textContent = modelo;
+        apiModel.appendChild(option);
+      });
+      
+      if (modelos.length > 0) {
+        apiModel.value = modelos[0];
+      }
+    } finally {
+      apiModel.disabled = false;
     }
   }
 
