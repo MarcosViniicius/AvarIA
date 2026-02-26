@@ -1,0 +1,491 @@
+{% extends "base.html" %} {% block title %}Upload - Analisador de Avarias{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm animate__animated animate__fadeInUp">
+      <div class="card-header bg-transparent">
+        <h4 class="card-title mb-0">
+          <i class="bi bi-cloud-upload text-primary me-2"></i>Upload de Imagens
+          e Mensagens
+        </h4>
+        <p class="text-muted mb-0 mt-2">
+          Envie suas imagens de produtos e arquivos de texto com mensagens
+        </p>
+      </div>
+      <div class="card-body">
+        <!-- Área de Drop Zone -->
+        <div
+          id="dropZone"
+          class="border-dashed rounded p-5 text-center mb-4 bg-light"
+        >
+          <div id="dropZoneContent">
+            <i class="bi bi-cloud-upload display-1 text-muted mb-3"></i>
+            <h5 class="text-muted">
+              Arraste arquivos aqui ou clique para selecionar
+            </h5>
+            <p class="text-muted mb-3">
+              Formatos suportados: <strong>JPG, PNG, TXT, ZIP, RAR, 7Z, TAR, GZ, BZ2</strong><br />
+              Tamanho máximo: <strong>50MB por arquivo</strong>
+            </p>
+            <button type="button" id="selectFilesBtn" class="btn btn-primary">
+              <i class="bi bi-folder2-open me-2"></i>Selecionar Arquivos
+            </button>
+          </div>
+          <div id="uploadProgress" class="d-none">
+            <div class="progress mb-3">
+              <div
+                id="uploadProgressBar"
+                class="progress-bar progress-bar-striped progress-bar-animated"
+                role="progressbar"
+                style="width: 0%"
+              ></div>
+            </div>
+            <div id="uploadStatus">Preparando upload...</div>
+          </div>
+        </div>
+
+        <!-- Input de arquivo oculto -->
+        <input
+          type="file"
+          id="fileInput"
+          multiple
+          accept=".jpg,.jpeg,.png,.txt,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.tar.bz2,.gz,.bz2"
+          style="display: none"
+        />
+
+        <!-- Lista de arquivos selecionados -->
+        <div id="fileList" class="d-none">
+          <h6 class="mb-3">
+            <i class="bi bi-list-ul me-2"></i>Arquivos Selecionados
+          </h6>
+          <div id="fileListContainer"></div>
+
+          <div class="d-flex justify-content-between mt-4">
+            <button
+              type="button"
+              id="clearFilesBtn"
+              class="btn btn-outline-secondary"
+            >
+              <i class="bi bi-x-circle me-2"></i>Limpar Lista
+            </button>
+            <button type="button" id="uploadBtn" class="btn btn-success">
+              <i class="bi bi-upload me-2"></i>Enviar Arquivos
+            </button>
+          </div>
+        </div>
+
+        <!-- Alertas -->
+        <div id="alertContainer" class="mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Dicas de Uso -->
+    <div
+      class="card border-0 shadow-sm mt-4 animate__animated animate__fadeInUp"
+      style="animation-delay: 0.2s"
+    >
+      <div class="card-header bg-transparent">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-lightbulb text-warning me-2"></i>Dicas de Uso
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <h6><i class="bi bi-camera me-2 text-primary"></i>Imagens</h6>
+            <ul class="list-unstyled text-muted">
+              <li>• Use imagens nítidas e bem iluminadas</li>
+              <li>• Focos nas etiquetas de produtos</li>
+              <li>• Formatos: JPG, JPEG, PNG</li>
+              <li>• Resolução mínima recomendada: 800x600</li>
+            </ul>
+          </div>
+          <div class="col-md-6">
+            <h6><i class="bi bi-file-text me-2 text-info"></i>Arquivos</h6>
+            <ul class="list-unstyled text-muted">
+              <li>• Arquivo TXT com conversas do WhatsApp</li>
+              <li>• Arquivos compactados (ZIP, RAR, 7Z, etc.)</li>
+              <li>• Mantenha a formatação original</li>
+              <li>• Múltiplos arquivos por sessão</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="alert alert-info mt-3">
+          <i class="bi bi-info-circle me-2"></i>
+          <strong>Importante:</strong> As imagens devem estar correlacionadas
+          com as mensagens no arquivo TXT. O sistema irá mapear automaticamente
+          as imagens com base nos nomes dos arquivos mencionados nas conversas.
+        </div>
+      </div>
+    </div>
+
+    <!-- Status das Imagens Atuais -->
+    <div
+      class="card border-0 shadow-sm mt-4 animate__animated animate__fadeInUp"
+      style="animation-delay: 0.4s"
+    >
+      <div class="card-header bg-transparent">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-folder2 text-success me-2"></i>Status Atual
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row text-center">
+          <div class="col-4">
+            <div class="stat-item">
+              <h3 class="text-primary mb-1" id="currentTotal">-</h3>
+              <small class="text-muted">Total</small>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="stat-item">
+              <h3 class="text-success mb-1" id="currentProcessed">-</h3>
+              <small class="text-muted">Processadas</small>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="stat-item">
+              <h3 class="text-warning mb-1" id="currentPending">-</h3>
+              <small class="text-muted">Pendentes</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <button id="refreshStatusBtn" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-clockwise me-1"></i>Atualizar Status
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const selectFilesBtn = document.getElementById("selectFilesBtn");
+    const fileList = document.getElementById("fileList");
+    const fileListContainer = document.getElementById("fileListContainer");
+    const clearFilesBtn = document.getElementById("clearFilesBtn");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const alertContainer = document.getElementById("alertContainer");
+    const refreshStatusBtn = document.getElementById("refreshStatusBtn");
+
+    let selectedFiles = [];
+
+    // Carregar status inicial
+    atualizarStatus();
+
+    // Event listeners
+    selectFilesBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", handleFileSelect);
+    clearFilesBtn.addEventListener("click", clearFiles);
+    uploadBtn.addEventListener("click", uploadFiles);
+    refreshStatusBtn.addEventListener("click", atualizarStatus);
+
+    // Drag and drop
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("border-primary", "bg-primary", "bg-opacity-10");
+    });
+
+    dropZone.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove(
+        "border-primary",
+        "bg-primary",
+        "bg-opacity-10"
+      );
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove(
+        "border-primary",
+        "bg-primary",
+        "bg-opacity-10"
+      );
+
+      const files = Array.from(e.dataTransfer.files);
+      handleFiles(files);
+    });
+
+    function handleFileSelect(e) {
+      const files = Array.from(e.target.files);
+      handleFiles(files);
+    }
+
+    function handleFiles(files) {
+      const validFiles = files.filter((file) => {
+        const validTypes = [
+          "image/jpeg",
+          "image/jpg", 
+          "image/png",
+          "text/plain",
+          "application/zip",
+          "application/x-zip-compressed",
+          "application/x-rar-compressed",
+          "application/x-7z-compressed",
+          "application/x-tar",
+          "application/gzip",
+          "application/x-gzip",
+          "application/x-bzip2"
+        ];
+        const validExtensions = [
+          ".jpg", ".jpeg", ".png", ".txt",
+          ".zip", ".rar", ".7z", ".tar", 
+          ".tar.gz", ".tgz", ".tar.bz2", 
+          ".gz", ".bz2"
+        ];
+        
+        const fileName = file.name.toLowerCase();
+        const extension = fileName.substring(fileName.lastIndexOf("."));
+        
+        // Verificar extensões compostas
+        const hasValidExtension = validExtensions.some(ext => {
+          if (ext.includes('.')) {
+            return fileName.endsWith(ext);
+          }
+          return extension === ext;
+        });
+
+        return (
+          validTypes.includes(file.type) || hasValidExtension
+        );
+      });
+
+      if (validFiles.length !== files.length) {
+        showAlert(
+          "warning",
+          `${
+            files.length - validFiles.length
+          } arquivo(s) ignorado(s) por ter formato inválido.`
+        );
+      }
+
+      selectedFiles = [...selectedFiles, ...validFiles];
+      updateFileList();
+    }
+
+    function updateFileList() {
+      if (selectedFiles.length === 0) {
+        fileList.classList.add("d-none");
+        return;
+      }
+
+      fileList.classList.remove("d-none");
+      fileListContainer.innerHTML = "";
+
+      selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement("div");
+        fileItem.className =
+          "file-item d-flex justify-content-between align-items-center p-3 border rounded mb-2";
+
+        const fileIcon = getFileIcon(file.type, file.name);
+        const fileSize = formatFileSize(file.size);
+
+        fileItem.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="${fileIcon} me-3"></i>
+                    <div>
+                        <div class="fw-medium">${file.name}</div>
+                        <small class="text-muted">${fileSize}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeFile(${index})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            `;
+
+        fileListContainer.appendChild(fileItem);
+      });
+    }
+
+    function getFileIcon(type, name) {
+      const fileName = name.toLowerCase();
+      const extension = fileName.substring(fileName.lastIndexOf("."));
+
+      if (
+        type.startsWith("image/") ||
+        [".jpg", ".jpeg", ".png"].includes(extension)
+      ) {
+        return "bi bi-image text-primary";
+      } else if (type === "text/plain" || extension === ".txt") {
+        return "bi bi-file-text text-info";
+      } else if (
+        fileName.endsWith(".zip") ||
+        fileName.endsWith(".rar") ||
+        fileName.endsWith(".7z") ||
+        fileName.endsWith(".tar") ||
+        fileName.endsWith(".tar.gz") ||
+        fileName.endsWith(".tgz") ||
+        fileName.endsWith(".tar.bz2") ||
+        fileName.endsWith(".gz") ||
+        fileName.endsWith(".bz2") ||
+        type.includes("zip") ||
+        type.includes("rar") ||
+        type.includes("7z") ||
+        type.includes("tar") ||
+        type.includes("gzip") ||
+        type.includes("bzip")
+      ) {
+        return "bi bi-file-zip text-warning";
+      }
+      return "bi bi-file text-secondary";
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return "0 Bytes";
+      const k = 1024;
+      const sizes = ["Bytes", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+    }
+
+    window.removeFile = function (index) {
+      selectedFiles.splice(index, 1);
+      updateFileList();
+    };
+
+    function clearFiles() {
+      selectedFiles = [];
+      fileInput.value = "";
+      updateFileList();
+    }
+
+    function uploadFiles() {
+      if (selectedFiles.length === 0) {
+        showAlert("warning", "Selecione pelo menos um arquivo para enviar.");
+        return;
+      }
+
+      const formData = new FormData();
+      selectedFiles.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      // Mostrar progresso
+      document.getElementById("dropZoneContent").classList.add("d-none");
+      document.getElementById("uploadProgress").classList.remove("d-none");
+      uploadBtn.disabled = true;
+
+      // Simular progresso
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += Math.random() * 30;
+        if (progress > 90) progress = 90;
+        document.getElementById("uploadProgressBar").style.width =
+          progress + "%";
+      }, 200);
+
+      fetch("/upload_files", {
+        method: "POST",
+        body: formData,
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          clearInterval(progressInterval);
+          document.getElementById("uploadProgressBar").style.width = "100%";
+
+          setTimeout(() => {
+            document
+              .getElementById("dropZoneContent")
+              .classList.remove("d-none");
+            document.getElementById("uploadProgress").classList.add("d-none");
+            uploadBtn.disabled = false;
+
+            if (data.success) {
+              showAlert("success", data.message);
+              clearFiles();
+              atualizarStatus();
+            } else {
+              showAlert("danger", data.message);
+            }
+          }, 500);
+        })
+        .catch((error) => {
+          clearInterval(progressInterval);
+          document.getElementById("dropZoneContent").classList.remove("d-none");
+          document.getElementById("uploadProgress").classList.add("d-none");
+          uploadBtn.disabled = false;
+          showAlert("danger", "Erro no upload: " + error);
+        });
+    }
+
+    function showAlert(type, message) {
+      const alertDiv = document.createElement("div");
+      alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+      alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+
+      alertContainer.innerHTML = "";
+      alertContainer.appendChild(alertDiv);
+
+      // Auto-remove após 5 segundos
+      setTimeout(() => {
+        if (alertDiv.parentNode) {
+          alertDiv.remove();
+        }
+      }, 5000);
+    }
+
+    function atualizarStatus() {
+      fetch("/api/stats")
+        .then((response) => response.json())
+        .then((stats) => {
+          document.getElementById("currentTotal").textContent =
+            stats.imagens_total;
+          document.getElementById("currentProcessed").textContent =
+            stats.imagens_processadas;
+          document.getElementById("currentPending").textContent =
+            stats.imagens_pendentes;
+        })
+        .catch((error) => {
+          console.error("Erro ao atualizar status:", error);
+        });
+    }
+  });
+</script>
+
+<style>
+  .border-dashed {
+    border: 2px dashed #dee2e6 !important;
+    transition: all 0.3s ease;
+  }
+
+  .border-dashed:hover {
+    border-color: #0d6efd !important;
+  }
+
+  .file-item {
+    transition: all 0.2s ease;
+  }
+
+  .file-item:hover {
+    background-color: #f8f9fa;
+  }
+
+  .stat-item h3 {
+    font-size: 2rem;
+    font-weight: 700;
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+{% endblock %}

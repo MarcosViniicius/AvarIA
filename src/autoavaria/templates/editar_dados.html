@@ -1,0 +1,1216 @@
+{% extends "base.html" %} {% block title %}Editar Dados - Analisador de
+Avarias{% endblock %} {% block content %}
+<div class="row">
+  <!-- Cabeçalho -->
+  <div class="col-12 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h1 class="h2 mb-1">
+          <i class="bi bi-pencil-square text-success me-2"></i>Editar Dados
+        </h1>
+        <p class="text-muted">
+          Edite produtos, quantidades e códigos de barras para auditoria.
+          <br /><small
+            ><i class="bi bi-info-circle me-1"></i> Use o botão
+            <i class="bi bi-arrow-left-right"></i> para mover itens entre
+            diferentes classificações (Avarias, Uso Interno, Erros).
+          </small>
+        </p>
+      </div>
+      <div>
+        <a
+          href="{{ url_for('configuracoes') }}"
+          class="btn btn-outline-secondary"
+        >
+          <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Abas das Planilhas -->
+  <div class="col-12 mb-4">
+    <ul class="nav nav-tabs" id="sheetTabs" role="tablist">
+      {% for sheet_name, sheet_data in dados.items() %}
+      <li class="nav-item" role="presentation">
+        <button
+          class="nav-link {% if loop.first %}active{% endif %}"
+          id="{{ sheet_name|replace(' ', '-')|lower }}-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#{{ sheet_name|replace(' ', '-')|lower }}"
+          type="button"
+          role="tab"
+        >
+          <i class="bi bi-table me-1"></i>{{ sheet_name }}
+          <span class="badge bg-primary ms-1">{{ sheet_data.total }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Conteúdo das Abas -->
+  <div class="col-12">
+    <div class="tab-content" id="sheetTabsContent">
+      {% for sheet_name, sheet_data in dados.items() %}
+      <div
+        class="tab-pane fade {% if loop.first %}show active{% endif %}"
+        id="{{ sheet_name|replace(' ', '-')|lower }}"
+        role="tabpanel"
+      >
+        <div class="card border-0 shadow-sm">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">
+                <i class="bi bi-table me-2"></i>{{ sheet_name }}
+              </h5>
+              <div>
+                <button
+                  class="btn btn-success btn-sm me-2 btn-adicionar-linha"
+                  data-sheet="{{ sheet_name }}"
+                >
+                  <i class="bi bi-plus-lg"></i> Adicionar
+                </button>
+                <button
+                  class="btn btn-outline-info btn-sm btn-exportar-tabela"
+                  data-table-id="{{ sheet_name|replace(' ', '-')|lower }}"
+                >
+                  <i class="bi bi-download"></i> Exportar
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table
+                class="table table-hover mb-0"
+                id="table-{{ sheet_name|replace(' ', '-')|lower }}"
+              >
+                <thead class="table-dark">
+                  <tr>
+                    <th width="50">#</th>
+                    {% for coluna in sheet_data.colunas %} {% if coluna not in
+                    ['index', 'id_linha'] %}
+                    <th>{{ coluna }}</th>
+                    {% endif %} {% endfor %}
+                    <th width="120">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for registro in sheet_data.dados %}
+                  <tr
+                    data-sheet="{{ sheet_name }}"
+                    data-linha="{{ registro.id_linha }}"
+                  >
+                    <td class="text-muted">{{ loop.index }}</td>
+                    {% for coluna in sheet_data.colunas %} {% if coluna not in
+                    ['index', 'id_linha'] %}
+                    <td>
+                      {% if 'Ver Imagem' in coluna %}
+                      <!-- Botão de visualização de imagem -->
+                      {% if registro.get('Caminho da Imagem') and
+                      registro.get('Caminho da Imagem') != 'N/A' and
+                      registro.get('Caminho da Imagem') != '-' %} {% set
+                      image_path = registro.get('Caminho da Imagem', '') %} {%
+                      set image_filename = image_path.split('\\')[-1] if '\\' in
+                      image_path else (image_path.split('/')[-1] if '/' in
+                      image_path else image_path) %}
+                      <button
+                        class="btn btn-outline-primary btn-sm view-image-btn"
+                        data-image="{{ url_for('servir_imagem', filename=image_filename) }}"
+                        title="Ver imagem: {{ image_filename }}"
+                      >
+                        <i class="bi bi-eye"></i> Ver
+                      </button>
+                      {% else %}
+                      <span class="text-muted small">Sem imagem</span>
+                      {% endif %} {% elif 'Caminho da Imagem' in coluna %}
+                      <!-- Não editável -->
+                      <small
+                        class="text-muted text-truncate d-block"
+                        style="max-width: 200px"
+                      >
+                        {{ registro[coluna] if registro[coluna] else '-' }}
+                      </small>
+                      {% else %}
+                      <!-- Editável -->
+                      <span
+                        class="editable-field"
+                        data-field="{{ coluna }}"
+                        data-original="{{ registro[coluna] if registro[coluna] else '' }}"
+                        onclick="editarCampo(this)"
+                        title="Clique para editar"
+                        style="cursor: pointer"
+                      >
+                        {{ registro[coluna] if registro[coluna] else '-' }}
+                      </span>
+                      {% endif %}
+                    </td>
+                    {% endif %} {% endfor %}
+                    <td>
+                      <div class="btn-group btn-group-sm" role="group">
+                        <button
+                          class="btn btn-outline-primary btn-editar-linha"
+                          data-sheet="{{ sheet_name }}"
+                          data-linha="{{ registro.id_linha }}"
+                          title="Editar linha"
+                        >
+                          <i class="bi bi-pencil"></i>
+                        </button>
+                        <div class="btn-group btn-group-sm" role="group">
+                          <button
+                            type="button"
+                            class="btn btn-outline-info dropdown-toggle"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            title="Mover para outra tabela"
+                          >
+                            <i class="bi bi-arrow-left-right"></i>
+                          </button>
+                          <ul class="dropdown-menu">
+                            {% if sheet_name != 'Avarias' %}
+                            <li>
+                              <a
+                                class="dropdown-item mover-item"
+                                href="#"
+                                data-sheet-origem="{{ sheet_name }}"
+                                data-sheet-destino="Avarias"
+                                data-linha="{{ registro.id_linha }}"
+                              >
+                                <i
+                                  class="bi bi-exclamation-triangle text-danger me-1"
+                                ></i>
+                                Mover para Avarias
+                              </a>
+                            </li>
+                            {% endif %} {% if sheet_name != 'Uso Interno' %}
+                            <li>
+                              <a
+                                class="dropdown-item mover-item"
+                                href="#"
+                                data-sheet-origem="{{ sheet_name }}"
+                                data-sheet-destino="Uso Interno"
+                                data-linha="{{ registro.id_linha }}"
+                              >
+                                <i class="bi bi-building text-info me-1"></i>
+                                Mover para Uso Interno
+                              </a>
+                            </li>
+                            {% endif %} {% if sheet_name != 'Erros de Análise'
+                            %}
+                            <li>
+                              <a
+                                class="dropdown-item mover-item"
+                                href="#"
+                                data-sheet-origem="{{ sheet_name }}"
+                                data-sheet-destino="Erros de Análise"
+                                data-linha="{{ registro.id_linha }}"
+                              >
+                                <i class="bi bi-x-circle text-warning me-1"></i>
+                                Mover para Erros
+                              </a>
+                            </li>
+                            {% endif %}
+                          </ul>
+                        </div>
+                        <button
+                          class="btn btn-outline-danger btn-excluir-linha"
+                          data-sheet="{{ sheet_name }}"
+                          data-linha="{{ registro.id_linha }}"
+                          title="Excluir linha"
+                        >
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Edição -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-pencil-square me-2"></i>Editar Campo
+        </h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Campo:</label>
+          <input type="text" class="form-control" id="editFieldName" readonly />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Valor:</label>
+          <textarea
+            class="form-control"
+            id="editFieldValue"
+            rows="3"
+          ></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cancelar
+        </button>
+        <button type="button" class="btn btn-primary" onclick="salvarEdicao()">
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Adicionar -->
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-plus-lg me-2"></i>Adicionar Nova Linha
+        </h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <div id="addFormFields">
+          <!-- Campos serão gerados dinamicamente -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn btn-success"
+          onclick="salvarNovaLinha()"
+        >
+          Adicionar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .editable-field {
+    border-bottom: 1px dashed #dee2e6;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+  }
+
+  .editable-field:hover {
+    background-color: #f8f9fa;
+  }
+
+  .table td {
+    vertical-align: middle;
+  }
+
+  .btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+  }
+
+  /* Estilos para dropdown de mover itens */
+  .dropdown-menu .dropdown-item {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .dropdown-menu .dropdown-item:hover {
+    background-color: #f8f9fa;
+  }
+
+  .dropdown-menu .dropdown-item.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* Melhorar aparência dos botões de ação */
+  .btn-group .dropdown-toggle::after {
+    font-size: 0.7rem;
+  }
+
+  /* Animação para linhas sendo removidas */
+  .removing-row {
+    background-color: #f8d7da !important;
+    transition: all 0.3s ease;
+  }
+</style>
+
+<script>
+  /*
+   * MELHORIAS IMPLEMENTADAS - EDIÇÃO DE DADOS:
+   *
+   * 1. CORREÇÃO DO BUG DE EDIÇÃO:
+   *    - Corrigido problema onde cliques em células editavam apenas a primeira tabela
+   *    - Adicionada identificação correta da tabela ativa através do contexto DOM
+   *    - Melhorada busca de elementos usando seletores específicos de aba
+   *
+   * 2. FUNCIONALIDADE DE MOVER ITENS ENTRE TABELAS:
+   *    - Adicionado dropdown de ações com opções para mover itens
+   *    - Implementada rota /mover_item no backend para transferir dados
+   *    - Adaptação automática de campos ao mover entre diferentes tipos de planilha
+   *    - Confirmação antes de mover e feedback visual durante operação
+   *
+   * 3. MELHORIAS DE UX:
+   *    - Feedback visual melhorado com estados de loading
+   *    - Mensagens informativas sobre funcionalidades
+   *    - Animações suaves para remoção de linhas
+   *    - Tooltips e ícones informativos
+   */
+
+  let currentEditElement = null;
+  let currentSheet = null;
+  let currentLineId = null;
+
+  // Editar campo individual
+  function editarCampo(element) {
+    currentEditElement = element;
+    const tr = element.closest("tr");
+    currentSheet = tr.getAttribute("data-sheet");
+    currentLineId = parseInt(tr.getAttribute("data-linha"));
+
+    const fieldName = element.getAttribute("data-field");
+    const currentValue = element.getAttribute("data-original");
+
+    console.log("🔧 Editando campo:", {
+      sheet: currentSheet,
+      linha: currentLineId,
+      campo: fieldName,
+      valor: currentValue,
+    });
+
+    document.getElementById("editFieldName").value = fieldName;
+    document.getElementById("editFieldValue").value = currentValue;
+
+    const modal = new bootstrap.Modal(document.getElementById("editModal"));
+    modal.show();
+  }
+
+  // Salvar edição
+  function salvarEdicao() {
+    const fieldName = document.getElementById("editFieldName").value;
+    const newValue = document.getElementById("editFieldValue").value;
+
+    if (!currentSheet || currentLineId === null) {
+      showAlert("danger", "Erro: dados de edição não encontrados");
+      return;
+    }
+
+    // Mostrar loading
+    const saveBtn = document.querySelector("#editModal .btn-primary");
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Salvando...';
+    saveBtn.disabled = true;
+
+    fetch("/salvar_edicao", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_name: currentSheet,
+        linha_id: parseInt(currentLineId),
+        campo: fieldName,
+        novo_valor: newValue,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          // Atualizar visualmente
+          if (currentEditElement) {
+            currentEditElement.textContent = newValue || "-";
+            currentEditElement.setAttribute("data-original", newValue);
+          }
+
+          showAlert("success", data.message);
+          bootstrap.Modal.getInstance(
+            document.getElementById("editModal")
+          ).hide();
+        } else {
+          showAlert("danger", data.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao salvar:", error);
+        showAlert("danger", "Erro ao salvar: " + error.message);
+      })
+      .finally(() => {
+        // Restaurar botão
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+      });
+  }
+
+  // Excluir linha
+  function excluirLinha(sheetName, linhaId) {
+    if (
+      !confirm(
+        "Tem certeza que deseja excluir esta linha? Esta ação não pode ser desfeita."
+      )
+    ) {
+      return;
+    }
+
+    // Encontrar o botão que foi clicado na tabela correta
+    const sanitizedSheetName = sheetName.replace(/ /g, "-").toLowerCase();
+    const deleteBtn = document.querySelector(
+      `#${sanitizedSheetName} button[data-sheet="${sheetName}"][data-linha="${linhaId}"].btn-excluir-linha`
+    );
+    const originalContent = deleteBtn ? deleteBtn.innerHTML : null;
+
+    if (deleteBtn) {
+      deleteBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+      deleteBtn.disabled = true;
+    }
+
+    fetch("/excluir_linha", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_name: sheetName,
+        linha_id: parseInt(linhaId),
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          // Remover linha da tabela com animação
+          const row = document.querySelector(
+            `#${sanitizedSheetName} tr[data-linha="${linhaId}"]`
+          );
+          if (row) {
+            row.style.transition = "opacity 0.3s";
+            row.style.opacity = "0";
+            setTimeout(() => row.remove(), 300);
+          }
+          showAlert("success", data.message);
+        } else {
+          showAlert("danger", data.message);
+          // Restaurar botão em caso de erro
+          if (deleteBtn && originalContent) {
+            deleteBtn.innerHTML = originalContent;
+            deleteBtn.disabled = false;
+          }
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao excluir:", error);
+        showAlert("danger", "Erro ao excluir: " + error.message);
+        // Restaurar botão em caso de erro
+        if (deleteBtn && originalContent) {
+          deleteBtn.innerHTML = originalContent;
+          deleteBtn.disabled = false;
+        }
+      });
+  }
+
+  // Mover item entre tabelas
+  function moverItem(sheetOrigem, sheetDestino, linhaId) {
+    console.log("🔄 Movendo item:", {
+      origem: sheetOrigem,
+      destino: sheetDestino,
+      linha: linhaId,
+    });
+
+    if (
+      !confirm(
+        `Tem certeza que deseja mover este item de "${sheetOrigem}" para "${sheetDestino}"?`
+      )
+    ) {
+      return;
+    }
+
+    // Mostrar loading no link
+    const moveLink = document.querySelector(
+      `a[data-sheet-origem="${sheetOrigem}"][data-sheet-destino="${sheetDestino}"][data-linha="${linhaId}"]`
+    );
+    const originalText = moveLink ? moveLink.innerHTML : null;
+
+    if (moveLink) {
+      moveLink.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Movendo...';
+      moveLink.classList.add("disabled");
+    }
+
+    fetch("/mover_item", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_origem: sheetOrigem,
+        sheet_destino: sheetDestino,
+        linha_id: parseInt(linhaId),
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          showAlert("success", data.message);
+          // Recarregar página para atualizar as tabelas
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          showAlert("danger", data.message);
+          // Restaurar link em caso de erro
+          if (moveLink && originalText) {
+            moveLink.innerHTML = originalText;
+            moveLink.classList.remove("disabled");
+          }
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao mover item:", error);
+        showAlert("danger", "Erro ao mover item: " + error.message);
+        // Restaurar link em caso de erro
+        if (moveLink && originalText) {
+          moveLink.innerHTML = originalText;
+          moveLink.classList.remove("disabled");
+        }
+      });
+  }
+
+  // Adicionar nova linha
+  function adicionarLinha(sheetName) {
+    currentSheet = sheetName;
+
+    // Pegar colunas da tabela
+    const table = document.getElementById(
+      `table-${sheetName.replace(/ /g, "-").toLowerCase()}`
+    );
+    const headers = Array.from(table.querySelectorAll("thead th"))
+      .map((th) => th.textContent.trim())
+      .filter((header) => header !== "#" && header !== "Ações");
+
+    // Gerar campos do formulário
+    let formHtml = "";
+    headers.forEach((header) => {
+      if (
+        !header.includes("Ver Imagem") &&
+        !header.includes("Caminho da Imagem")
+      ) {
+        const isRequired = [
+          "Produto",
+          "Quantidade",
+          "Código de Barras",
+        ].includes(header);
+        formHtml += `
+        <div class="mb-3">
+          <label class="form-label">
+            ${header} ${isRequired ? '<span class="text-danger">*</span>' : ""}
+          </label>
+          <input 
+            type="text" 
+            class="form-control" 
+            name="${header}" 
+            placeholder="Digite ${header.toLowerCase()}"
+            ${isRequired ? "required" : ""}
+          >
+          <div class="invalid-feedback">
+            Este campo é obrigatório
+          </div>
+        </div>
+      `;
+      }
+    });
+
+    document.getElementById("addFormFields").innerHTML = formHtml;
+
+    const modal = new bootstrap.Modal(document.getElementById("addModal"));
+    modal.show();
+  }
+
+  // Salvar edição completa
+  function salvarEdicaoCompleta() {
+    const formData = {};
+    const inputs = document.querySelectorAll("#addFormFields input");
+    let hasEmptyFields = false;
+
+    inputs.forEach((input) => {
+      formData[input.name] = input.value;
+      if (!input.value.trim() && input.hasAttribute("required")) {
+        hasEmptyFields = true;
+        input.classList.add("is-invalid");
+      } else {
+        input.classList.remove("is-invalid");
+      }
+    });
+
+    if (hasEmptyFields) {
+      showAlert("warning", "Por favor, preencha todos os campos obrigatórios");
+      return;
+    }
+
+    if (!currentSheet || currentLineId === null) {
+      showAlert("danger", "Erro: dados de edição não encontrados");
+      return;
+    }
+
+    // Mostrar loading
+    const saveBtn = document.querySelector("#addModal .btn-success");
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Salvando...';
+    saveBtn.disabled = true;
+
+    fetch("/salvar_edicao_completa", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_name: currentSheet,
+        linha_id: parseInt(currentLineId),
+        dados_linha: formData,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          showAlert("success", data.message);
+          bootstrap.Modal.getInstance(
+            document.getElementById("addModal")
+          ).hide();
+
+          // Atualizar linha na tabela específica
+          const sanitizedSheetName = currentSheet
+            .replace(/ /g, "-")
+            .toLowerCase();
+          const row = document.querySelector(
+            `#${sanitizedSheetName} tr[data-linha="${currentLineId}"]`
+          );
+          if (row) {
+            // Encontrar células editáveis e atualizar
+            const editableFields = row.querySelectorAll(".editable-field");
+            editableFields.forEach((field) => {
+              const fieldName = field.getAttribute("data-field");
+              if (formData[fieldName] !== undefined) {
+                field.textContent = formData[fieldName] || "-";
+                field.setAttribute("data-original", formData[fieldName] || "");
+              }
+            });
+          }
+
+          // Restaurar modal para estado de adicionar
+          resetAddModal();
+        } else {
+          showAlert("danger", data.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao salvar edição completa:", error);
+        showAlert("danger", "Erro ao salvar: " + error.message);
+      })
+      .finally(() => {
+        // Restaurar botão
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+      });
+  }
+
+  // Resetar modal para estado de adicionar
+  function resetAddModal() {
+    const modalTitle = document.querySelector("#addModal .modal-title");
+    const saveBtn = document.querySelector("#addModal .btn-success");
+
+    modalTitle.innerHTML =
+      '<i class="bi bi-plus-lg me-2"></i>Adicionar Nova Linha';
+    saveBtn.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar';
+    saveBtn.setAttribute("onclick", "salvarNovaLinha()");
+  }
+
+  // Salvar nova linha
+  function salvarNovaLinha() {
+    const formData = {};
+    const inputs = document.querySelectorAll("#addFormFields input");
+    let hasEmptyFields = false;
+
+    inputs.forEach((input) => {
+      formData[input.name] = input.value;
+      if (!input.value.trim() && input.hasAttribute("required")) {
+        hasEmptyFields = true;
+        input.classList.add("is-invalid");
+      } else {
+        input.classList.remove("is-invalid");
+      }
+    });
+
+    if (hasEmptyFields) {
+      showAlert("warning", "Por favor, preencha todos os campos obrigatórios");
+      return;
+    }
+
+    // Mostrar loading
+    const saveBtn = document.querySelector("#addModal .btn-success");
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Adicionando...';
+    saveBtn.disabled = true;
+
+    fetch("/adicionar_linha", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_name: currentSheet,
+        dados_linha: formData,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          showAlert("success", data.message);
+          bootstrap.Modal.getInstance(
+            document.getElementById("addModal")
+          ).hide();
+          // Recarregar página para mostrar nova linha
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          showAlert("danger", data.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao adicionar:", error);
+        showAlert("danger", "Erro ao adicionar: " + error.message);
+      })
+      .finally(() => {
+        // Restaurar botão
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+      });
+  }
+
+  // Exportar tabela
+  function exportarTabela(tableId) {
+    const table = document.getElementById(`table-${tableId}`);
+    let csv = [];
+
+    // Headers
+    const headers = Array.from(table.querySelectorAll("thead th"))
+      .map((th) => th.textContent.trim())
+      .filter((header) => header !== "Ações");
+    csv.push(headers.join(","));
+
+    // Rows
+    const rows = table.querySelectorAll("tbody tr");
+    rows.forEach((row) => {
+      const cells = Array.from(row.querySelectorAll("td"))
+        .slice(0, -1) // Remove última coluna (ações)
+        .map((td) => td.textContent.trim());
+      csv.push(cells.join(","));
+    });
+
+    // Download
+    const csvContent = csv.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tableId}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  // Função de alerta
+  function showAlert(type, message) {
+    // Tentar usar a função global primeiro
+    if (window.AnalisadorAvarias && window.AnalisadorAvarias.showAlert) {
+      window.AnalisadorAvarias.showAlert(type, message);
+      return;
+    }
+
+    // Fallback: criar alerta próprio
+    const alertContainer =
+      document.getElementById("alert-container") || createAlertContainer();
+
+    const alertId = "alert-" + Date.now();
+    const alertClass =
+      {
+        success: "alert-success",
+        danger: "alert-danger",
+        warning: "alert-warning",
+        info: "alert-info",
+      }[type] || "alert-info";
+
+    const alertHtml = `
+      <div id="${alertId}" class="alert ${alertClass} alert-dismissible fade show" role="alert">
+        <i class="bi bi-${
+          type === "success"
+            ? "check-circle"
+            : type === "danger"
+            ? "exclamation-triangle"
+            : "info-circle"
+        }"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    `;
+
+    alertContainer.innerHTML = alertHtml;
+
+    // Auto-remove após 5 segundos
+    setTimeout(() => {
+      const alertEl = document.getElementById(alertId);
+      if (alertEl) {
+        alertEl.remove();
+      }
+    }, 5000);
+  }
+
+  // Criar container de alertas se não existir
+  function createAlertContainer() {
+    let container = document.getElementById("alert-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "alert-container";
+      container.style.position = "fixed";
+      container.style.top = "20px";
+      container.style.right = "20px";
+      container.style.zIndex = "9999";
+      container.style.minWidth = "300px";
+      document.body.appendChild(container);
+    }
+    return container;
+  }
+
+  // Adicionar event listeners quando o documento estiver pronto
+  document.addEventListener("DOMContentLoaded", function () {
+    // Event listeners para botões de editar linha
+    document.querySelectorAll(".btn-editar-linha").forEach((button) => {
+      button.addEventListener("click", function () {
+        const sheetName = this.getAttribute("data-sheet");
+        const linhaId = this.getAttribute("data-linha");
+        editarLinha(sheetName, linhaId);
+      });
+    });
+
+    // Event listeners para botões de excluir linha
+    document.querySelectorAll(".btn-excluir-linha").forEach((button) => {
+      button.addEventListener("click", function () {
+        const sheetName = this.getAttribute("data-sheet");
+        const linhaId = this.getAttribute("data-linha");
+        excluirLinha(sheetName, linhaId);
+      });
+    });
+
+    // Event listeners para botões de adicionar linha
+    document.querySelectorAll(".btn-adicionar-linha").forEach((button) => {
+      button.addEventListener("click", function () {
+        const sheetName = this.getAttribute("data-sheet");
+        adicionarLinha(sheetName);
+      });
+    });
+
+    // Event listeners para botões de exportar tabela
+    document.querySelectorAll(".btn-exportar-tabela").forEach((button) => {
+      button.addEventListener("click", function () {
+        const tableId = this.getAttribute("data-table-id");
+        exportarTabela(tableId);
+      });
+    });
+
+    // Event listeners para links de mover item
+    document.querySelectorAll(".mover-item").forEach((link) => {
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        const sheetOrigem = this.getAttribute("data-sheet-origem");
+        const sheetDestino = this.getAttribute("data-sheet-destino");
+        const linhaId = this.getAttribute("data-linha");
+        moverItem(sheetOrigem, sheetDestino, linhaId);
+      });
+    });
+
+    // Event listener para resetar modal quando fechado
+    const addModal = document.getElementById("addModal");
+    if (addModal) {
+      addModal.addEventListener("hidden.bs.modal", function () {
+        resetAddModal();
+        // Limpar formulário
+        const inputs = document.querySelectorAll("#addFormFields input");
+        inputs.forEach((input) => {
+          input.value = "";
+          input.classList.remove("is-invalid");
+        });
+      });
+    }
+  });
+
+  // Editar linha completa
+  function editarLinha(sheetName, linhaId) {
+    console.log("DEBUG editarLinha:", { sheetName, linhaId });
+
+    currentSheet = sheetName;
+    currentLineId = linhaId;
+
+    // Encontrar a linha na tabela usando a aba ativa ou específica
+    const sanitizedSheetName = sheetName.replace(/ /g, "-").toLowerCase();
+    const row = document.querySelector(
+      `#${sanitizedSheetName} tr[data-linha="${linhaId}"]`
+    );
+
+    if (!row) {
+      console.error(
+        "Linha não encontrada:",
+        linhaId,
+        "na tabela:",
+        sanitizedSheetName
+      );
+      showAlert("danger", "Linha não encontrada");
+      return;
+    }
+
+    // Pegar dados atuais da linha
+    const tableId = `table-${sanitizedSheetName}`;
+    console.log("DEBUG tableId:", tableId);
+
+    const table = document.getElementById(tableId);
+    if (!table) {
+      console.error("Tabela não encontrada:", tableId);
+      showAlert("danger", "Tabela não encontrada");
+      return;
+    }
+
+    const headers = Array.from(table.querySelectorAll("thead th"))
+      .map((th) => th.textContent.trim())
+      .filter((header) => header !== "#" && header !== "Ações");
+
+    console.log("DEBUG headers:", headers);
+
+    // Pegar valores atuais da linha específica
+    const currentData = {};
+    const cells = row.querySelectorAll("td");
+    let cellIndex = 1; // Pular primeira coluna (#)
+
+    console.log("DEBUG cells count:", cells.length);
+
+    headers.forEach((header) => {
+      if (
+        !header.includes("Ver Imagem") &&
+        !header.includes("Caminho da Imagem")
+      ) {
+        const cell = cells[cellIndex];
+        if (cell) {
+          const editableField = cell.querySelector(".editable-field");
+          if (editableField) {
+            currentData[header] =
+              editableField.getAttribute("data-original") || "";
+          } else {
+            const cellText = cell.textContent.trim();
+            currentData[header] = cellText === "-" ? "" : cellText;
+          }
+        }
+        cellIndex++;
+      } else if (header.includes("Caminho da Imagem")) {
+        // Para campos de caminho de imagem, manter valor existente
+        const cell = cells[cellIndex];
+        if (cell) {
+          const cellText = cell.textContent.trim();
+          currentData[header] = cellText === "-" ? "" : cellText;
+        }
+        cellIndex++;
+      }
+      // Para "Ver Imagem", não incrementar cellIndex pois não há célula correspondente
+    });
+
+    console.log("DEBUG currentData:", currentData);
+
+    // Gerar formulário de edição completa
+    let formHtml = "";
+    headers.forEach((header) => {
+      if (
+        !header.includes("Ver Imagem") &&
+        !header.includes("Caminho da Imagem")
+      ) {
+        const isRequired = [
+          "Produto",
+          "Quantidade",
+          "Código de Barras",
+          "Arquivo",
+        ].includes(header);
+        const currentValue = currentData[header] || "";
+
+        formHtml += `
+          <div class="mb-3">
+            <label class="form-label">
+              ${header} ${
+          isRequired ? '<span class="text-danger">*</span>' : ""
+        }
+            </label>
+            <input 
+              type="text" 
+              class="form-control" 
+              name="${header}" 
+              value="${currentValue}"
+              placeholder="Digite ${header.toLowerCase()}"
+              ${isRequired ? "required" : ""}
+            >
+            <div class="invalid-feedback">
+              Este campo é obrigatório
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    // Atualizar modal de adição para ser usado como edição
+    document.getElementById("addFormFields").innerHTML = formHtml;
+
+    // Alterar título e botão do modal
+    const modalTitle = document.querySelector("#addModal .modal-title");
+    const saveBtn = document.querySelector("#addModal .btn-success");
+
+    modalTitle.innerHTML =
+      '<i class="bi bi-pencil-square me-2"></i>Editar Linha Completa';
+    saveBtn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar Alterações';
+    saveBtn.setAttribute("onclick", "salvarEdicaoCompleta()");
+
+    const modal = new bootstrap.Modal(document.getElementById("addModal"));
+    modal.show();
+  }
+
+  // Configurar visualização de imagens usando delegação de eventos
+  console.log("🖼️ Configurando visualização de imagens com delegação...");
+
+  // Usar delegação de eventos no document para capturar cliques em botões dinâmicos
+  document.addEventListener("click", function (e) {
+    if (e.target.closest(".view-image-btn")) {
+      e.preventDefault();
+      const btn = e.target.closest(".view-image-btn");
+      console.log("🖱️ Botão clicado via delegação em editar_dados!");
+
+      const imagePath = btn.getAttribute("data-image");
+      console.log("🖼️ Caminho da imagem:", imagePath);
+
+      if (!imagePath || imagePath === "N/A" || imagePath === "-") {
+        alert("Imagem não disponível");
+        return;
+      }
+
+      // Verificar se modal existe
+      const imageModalEl = document.getElementById("imageModal");
+      if (!imageModalEl) {
+        alert("Modal de imagem não encontrado");
+        return;
+      }
+
+      const imageModal = new bootstrap.Modal(imageModalEl);
+      const modalImage = document.getElementById("modalImage");
+      const downloadBtn = document.getElementById("downloadImageBtn");
+      const imageLoadError = document.getElementById("imageLoadError");
+
+      // Extrair nome do arquivo da URL
+      const filename = imagePath.split("/").pop() || "Imagem";
+
+      // Atualizar modal
+      const titleEl = document.getElementById("imageModalLabel");
+      const filenameEl = document.getElementById("imageModalFilename");
+
+      if (titleEl) titleEl.textContent = "Visualizar Imagem";
+      if (filenameEl) filenameEl.textContent = filename;
+
+      // Configurar imagem
+      if (modalImage) {
+        modalImage.src = imagePath;
+        modalImage.alt = filename;
+        modalImage.onload = () => {
+          if (imageLoadError) imageLoadError.style.display = "none";
+        };
+        modalImage.onerror = () => {
+          if (imageLoadError) {
+            imageLoadError.style.display = "block";
+            imageLoadError.textContent = "Erro ao carregar a imagem";
+          }
+        };
+      }
+
+      // Configurar botão de download
+      if (downloadBtn) {
+        downloadBtn.onclick = () => {
+          const link = document.createElement("a");
+          link.href = imagePath;
+          link.download = filename;
+          link.click();
+        };
+      }
+
+      console.log("📱 Abrindo modal...");
+      imageModal.show();
+    }
+  });
+</script>
+
+<!-- Modal de Visualização de Imagem -->
+<div
+  class="modal fade"
+  id="imageModal"
+  tabindex="-1"
+  aria-labelledby="imageModalLabel"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageModalLabel">Visualizar Imagem</h5>
+        <small class="text-muted ms-2" id="imageModalFilename"></small>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-center">
+        <div
+          id="imageLoadError"
+          class="alert alert-warning"
+          style="display: none"
+        >
+          Erro ao carregar a imagem
+        </div>
+        <img
+          id="modalImage"
+          src=""
+          alt="Imagem"
+          class="img-fluid rounded shadow"
+          style="max-height: 70vh"
+        />
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          data-bs-dismiss="modal"
+        >
+          <i class="bi bi-x-circle"></i> Fechar
+        </button>
+        <button type="button" class="btn btn-primary" id="downloadImageBtn">
+          <i class="bi bi-download"></i> Download
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

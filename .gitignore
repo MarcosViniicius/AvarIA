@@ -73,6 +73,9 @@ $RECYCLE.BIN/
 *.old
 *.orig
 .cancel_processing
+*.opus
+.agent
+.ruff_cache
 
 # ============================================
 # 🔒 SEGURANÇA (CRÍTICO)
@@ -109,6 +112,13 @@ logs/*.log
 resultados/*
 !resultados/README.md
 !resultados/.gitkeep
+
+# Banco de dados local (SQLite)
+database/*
+!database/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
 
 # Imagens enviadas para análise
 imagens_para_analisar/*

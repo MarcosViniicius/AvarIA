@@ -1,0 +1,621 @@
+{% extends "base.html" %} {% block title %}Dashboard - Analisador de Avarias{%
+endblock %} {% block content %}
+<div class="row">
+  <!-- Cabeçalho -->
+  <div class="col-12 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h1 class="h2 mb-1">
+          <i class="bi bi-speedometer2 text-primary me-2"></i>Dashboard
+        </h1>
+        <p class="text-muted">Visão geral do sistema de análise de avarias</p>
+      </div>
+      <div>
+        <button id="refreshBtn" class="btn btn-outline-primary me-2">
+          <i class="bi bi-arrow-clockwise"></i> Atualizar
+        </button>
+        <button id="processBtn" class="btn btn-success">
+          <i class="bi bi-play-fill"></i> Iniciar Processamento
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cards de Estatísticas -->
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
+    >
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col">
+            <h5 class="card-title text-muted mb-2 font-weight-bold">
+              Total de Imagens
+            </h5>
+            <h2 class="text-primary mb-0" id="totalImagens">
+              {{ stats.imagens_total }}
+            </h2>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-images text-primary" style="font-size: 2rem"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
+      style="animation-delay: 0.1s"
+    >
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col">
+            <h5 class="card-title text-muted mb-2 font-weight-bold">
+              Processadas
+            </h5>
+            <h2 class="text-success mb-0" id="imagensProcessadas">
+              {{ stats.imagens_processadas }}
+            </h2>
+          </div>
+          <div class="col-auto">
+            <i
+              class="bi bi-check-circle text-success"
+              style="font-size: 2rem"
+            ></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
+      style="animation-delay: 0.2s"
+    >
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col">
+            <h5 class="card-title text-muted mb-2 font-weight-bold">
+              Pendentes
+            </h5>
+            <h2 class="text-warning mb-0" id="imagensPendentes">
+              {{ stats.imagens_pendentes }}
+            </h2>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-clock text-warning" style="font-size: 2rem"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-md-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
+      style="animation-delay: 0.3s"
+    >
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col">
+            <h5 class="card-title text-muted mb-2 font-weight-bold">
+              Tokens Hoje
+            </h5>
+            <h2 class="text-info mb-0" id="tokensHoje">
+              {{ "{:,}".format(stats.tokens_consumidos_hoje) }}
+            </h2>
+          </div>
+          <div class="col-auto">
+            <i class="bi bi-cpu text-info" style="font-size: 2rem"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Informações do Sistema -->
+  <div class="col-lg-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInLeft"
+    >
+      <div class="card-header bg-transparent">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-info-circle text-primary me-2"></i>Informações do
+          Sistema
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">
+                <i class="bi bi-calendar3 me-2"></i>Último Processamento:
+              </span>
+              <span class="fw-bold" id="ultimoProcessamento"
+                >{{ stats.ultimo_processamento }}</span
+              >
+            </div>
+            <hr />
+          </div>
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">
+                <i class="bi bi-file-earmark-excel me-2"></i>Relatório
+                Disponível:
+              </span>
+              <span
+                class="{% if stats.relatorio_existe %}text-success{% else %}text-warning{% endif %}"
+              >
+                {% if stats.relatorio_existe %}
+                <i class="bi bi-check-circle"></i> Sim {% else %}
+                <i class="bi bi-x-circle"></i> Não {% endif %}
+              </span>
+            </div>
+            <hr />
+          </div>
+          <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">
+                <i class="bi bi-percent me-2"></i>Progresso:
+              </span>
+              <span class="fw-bold">
+                {% if stats.imagens_total > 0 %} {{ "%.1f" |
+                format((stats.imagens_processadas / stats.imagens_total) * 100)
+                }}% {% else %} 0% {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {% if stats.relatorio_existe %}
+        <div class="mt-3">
+          <a
+            href="{{ url_for('download_relatorio') }}"
+            class="btn btn-outline-success btn-sm me-2"
+          >
+            <i class="bi bi-download"></i> Download Relatório
+          </a>
+          <a
+            href="{{ url_for('visualizar_relatorio') }}"
+            class="btn btn-outline-primary btn-sm"
+          >
+            <i class="bi bi-eye"></i> Visualizar
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Ações Rápidas -->
+  <div class="col-lg-6 mb-4">
+    <div
+      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInRight"
+    >
+      <div class="card-header bg-transparent">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-lightning text-warning me-2"></i>Ações Rápidas
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a
+            href="{{ url_for('upload_page') }}"
+            class="btn btn-outline-primary"
+          >
+            <i class="bi bi-cloud-upload me-2"></i>Enviar Novas Imagens
+          </a>
+
+          {% if stats.imagens_pendentes > 0 %}
+          <button id="processBtn2" class="btn btn-success">
+            <i class="bi bi-play-fill me-2"></i>Processar {{
+            stats.imagens_pendentes }} Imagem(s)
+          </button>
+          {% else %}
+          <button class="btn btn-secondary" disabled>
+            <i class="bi bi-check-circle me-2"></i>Todas as Imagens Processadas
+          </button>
+          {% endif %}
+
+          <a
+            href="{{ url_for('configuracoes') }}"
+            class="btn btn-outline-secondary"
+          >
+            <i class="bi bi-gear me-2"></i>Configurações
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resultados Recentes -->
+  {% if resultados.avarias or resultados.uso_interno %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm animate__animated animate__fadeInUp">
+      <div class="card-header bg-transparent">
+        <h5 class="card-title mb-0">
+          <i class="bi bi-list-ul text-primary me-2"></i>Resultados Recentes
+        </h5>
+      </div>
+      <div class="card-body">
+        <!-- Nav tabs -->
+        <ul class="nav nav-tabs" id="resultadosTab" role="tablist">
+          {% if resultados.avarias %}
+          <li class="nav-item" role="presentation">
+            <button
+              class="nav-link active"
+              id="avarias-tab"
+              data-bs-toggle="tab"
+              data-bs-target="#avarias"
+              type="button"
+              role="tab"
+            >
+              <i class="bi bi-exclamation-triangle text-danger me-1"></i>
+              Avarias ({{ resultados.avarias|length }})
+            </button>
+          </li>
+          {% endif %} {% if resultados.uso_interno %}
+          <li class="nav-item" role="presentation">
+            <button
+              class="nav-link {% if not resultados.avarias %}active{% endif %}"
+              id="uso-interno-tab"
+              data-bs-toggle="tab"
+              data-bs-target="#uso-interno"
+              type="button"
+              role="tab"
+            >
+              <i class="bi bi-building text-info me-1"></i>
+              Uso Interno ({{ resultados.uso_interno|length }})
+            </button>
+          </li>
+          {% endif %} {% if resultados.erros %}
+          <li class="nav-item" role="presentation">
+            <button
+              class="nav-link"
+              id="erros-tab"
+              data-bs-toggle="tab"
+              data-bs-target="#erros"
+              type="button"
+              role="tab"
+            >
+              <i class="bi bi-x-circle text-warning me-1"></i>
+              Erros ({{ resultados.erros|length }})
+            </button>
+          </li>
+          {% endif %}
+        </ul>
+
+        <!-- Tab panes -->
+        <div class="tab-content" id="resultadosTabContent">
+          {% if resultados.avarias %}
+          <div class="tab-pane fade show active" id="avarias" role="tabpanel">
+            <div class="table-responsive mt-3">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th>Produto</th>
+                    <th>Detalhes</th>
+                    <th>Observação</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in resultados.avarias[-5:] %}
+                  <tr>
+                    <td><strong>{{ item.Produto }}</strong></td>
+                    <td>{{ item.Detalhes }}</td>
+                    <td class="text-truncate" style="max-width: 200px">
+                      {{ item['Observação da Mensagem'] }}
+                    </td>
+                    <td>
+                      {% if item.get('Caminho da Imagem') and item.get('Caminho da Imagem') != 'N/A' and item.get('Caminho da Imagem') != '-' and item.get('Caminho da Imagem')|string != 'nan' %}
+                        {% set image_path = item.get('Caminho da Imagem', '')|string %}
+                        {% set image_filename = image_path.split('\\')[-1] if '\\' in image_path else (image_path.split('/')[-1] if '/' in image_path else image_path) %}
+                      <button
+                        class="btn btn-outline-primary btn-sm view-image-btn"
+                        data-image="{{ url_for('servir_imagem', filename=image_filename) }}"
+                        title="Ver imagem: {{ image_filename }}"
+                      >
+                        <i class="bi bi-eye"></i> Ver
+                      </button>
+                      {% else %}
+                      <span class="text-muted small">Sem imagem</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %} {% if resultados.uso_interno %}
+          <div
+            class="tab-pane fade {% if not resultados.avarias %}show active{% endif %}"
+            id="uso-interno"
+            role="tabpanel"
+          >
+            <div class="table-responsive mt-3">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th>Produto</th>
+                    <th>Detalhes</th>
+                    <th>Observação</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in resultados.uso_interno[-5:] %}
+                  <tr>
+                    <td><strong>{{ item.Produto }}</strong></td>
+                    <td>{{ item.Detalhes }}</td>
+                    <td class="text-truncate" style="max-width: 200px">
+                      {{ item['Observação da Mensagem'] }}
+                    </td>
+                    <td>
+                      {% if item.get('Caminho da Imagem') and item.get('Caminho da Imagem') != 'N/A' and item.get('Caminho da Imagem') != '-' and item.get('Caminho da Imagem')|string != 'nan' %}
+                        {% set image_path = item.get('Caminho da Imagem', '')|string %}
+                        {% set image_filename = image_path.split('\\')[-1] if '\\' in image_path else (image_path.split('/')[-1] if '/' in image_path else image_path) %}
+                      <button
+                        class="btn btn-outline-primary btn-sm view-image-btn"
+                        data-image="{{ url_for('servir_imagem', filename=image_filename) }}"
+                        title="Ver imagem: {{ image_filename }}"
+                      >
+                        <i class="bi bi-eye"></i> Ver
+                      </button>
+                      {% else %}
+                      <span class="text-muted small">Sem imagem</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %} {% if resultados.erros %}
+          <div class="tab-pane fade" id="erros" role="tabpanel">
+            <div class="table-responsive mt-3">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th>Arquivo</th>
+                    <th>Erro</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in resultados.erros[-5:] %}
+                  <tr>
+                    <td><strong>{{ item.Arquivo }}</strong></td>
+                    <td>{{ item['Detalhes do Erro'] }}</td>
+                    <td>
+                      {% if item.get('Caminho da Imagem') and item.get('Caminho da Imagem') != 'N/A' and item.get('Caminho da Imagem') != '-' and item.get('Caminho da Imagem')|string != 'nan' %}
+                        {% set image_path = item.get('Caminho da Imagem', '')|string %}
+                        {% set image_filename = image_path.split('\\')[-1] if '\\' in image_path else (image_path.split('/')[-1] if '/' in image_path else image_path) %}
+                      <button
+                        class="btn btn-outline-primary btn-sm view-image-btn"
+                        data-image="{{ url_for('servir_imagem', filename=image_filename) }}"
+                        title="Ver imagem: {{ image_filename }}"
+                      >
+                        <i class="bi bi-eye"></i> Ver
+                      </button>
+                      {% else %}
+                      <span class="text-muted small">Sem imagem</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Bind botões de processamento
+    const processBtn = document.getElementById("processBtn");
+    const processBtn2 = document.getElementById("processBtn2");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    if (processBtn) {
+      processBtn.addEventListener("click", iniciarProcessamento);
+    }
+    if (processBtn2) {
+      processBtn2.addEventListener("click", iniciarProcessamento);
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", atualizarStats);
+    }
+
+    function iniciarProcessamento() {
+      fetch("/processar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            showAlert("success", data.message);
+            monitorarProgresso();
+          } else {
+            showAlert("danger", data.message);
+          }
+        })
+        .catch((error) => {
+          showAlert("danger", "Erro ao iniciar processamento: " + error);
+        });
+    }
+
+    function atualizarStats() {
+      const originalText = refreshBtn.innerHTML;
+      refreshBtn.innerHTML =
+        '<i class="bi bi-arrow-clockwise spin"></i> Atualizando...';
+      refreshBtn.disabled = true;
+
+      fetch("/api/stats")
+        .then((response) => response.json())
+        .then((stats) => {
+          document.getElementById("totalImagens").textContent =
+            stats.imagens_total;
+          document.getElementById("imagensProcessadas").textContent =
+            stats.imagens_processadas;
+          document.getElementById("imagensPendentes").textContent =
+            stats.imagens_pendentes;
+          document.getElementById("tokensHoje").textContent =
+            stats.tokens_consumidos_hoje.toLocaleString();
+          document.getElementById("ultimoProcessamento").textContent =
+            stats.ultimo_processamento;
+
+          showAlert("success", "Estatísticas atualizadas!");
+        })
+        .catch((error) => {
+          showAlert("danger", "Erro ao atualizar: " + error);
+        })
+        .finally(() => {
+          refreshBtn.innerHTML = originalText;
+          refreshBtn.disabled = false;
+        });
+    }
+
+    // Auto-refresh a cada 30 segundos
+    setInterval(atualizarStats, 30000);
+
+    // Configurar visualização de imagens usando delegação de eventos
+    console.log("🖼️ Configurando visualização de imagens com delegação...");
+    
+    // Usar delegação de eventos no document para capturar cliques em botões dinâmicos
+    document.addEventListener("click", function(e) {
+      if (e.target.closest(".view-image-btn")) {
+        e.preventDefault();
+        const btn = e.target.closest(".view-image-btn");
+        console.log("�️ Botão clicado via delegação!");
+        
+        const imagePath = btn.getAttribute("data-image");
+        console.log("🖼️ Caminho da imagem:", imagePath);
+
+        if (!imagePath || imagePath === "N/A" || imagePath === "-") {
+          alert("Imagem não disponível");
+          return;
+        }
+
+        // Verificar se modal existe
+        const imageModalEl = document.getElementById("imageModal");
+        if (!imageModalEl) {
+          alert("Modal de imagem não encontrado");
+          return;
+        }
+
+        const imageModal = new bootstrap.Modal(imageModalEl);
+        const modalImage = document.getElementById("modalImage");
+        const downloadBtn = document.getElementById("downloadImageBtn");
+        const imageLoadError = document.getElementById("imageLoadError");
+
+        // Extrair nome do arquivo da URL
+        const filename = imagePath.split("/").pop() || "Imagem";
+
+        // Atualizar modal
+        const titleEl = document.getElementById("imageModalLabel");
+        const filenameEl = document.getElementById("imageModalFilename");
+        
+        if (titleEl) titleEl.textContent = "Visualizar Imagem";
+        if (filenameEl) filenameEl.textContent = filename;
+
+        // Configurar imagem
+        if (modalImage) {
+          modalImage.src = imagePath;
+          modalImage.alt = filename;
+          modalImage.onload = () => {
+            if (imageLoadError) imageLoadError.style.display = "none";
+          };
+          modalImage.onerror = () => {
+            if (imageLoadError) {
+              imageLoadError.style.display = "block";
+              imageLoadError.textContent = "Erro ao carregar a imagem";
+            }
+          };
+        }
+
+        // Configurar botão de download
+        if (downloadBtn) {
+          downloadBtn.onclick = () => {
+            const link = document.createElement('a');
+            link.href = imagePath;
+            link.download = filename;
+            link.click();
+          };
+        }
+
+        console.log("📱 Abrindo modal...");
+        imageModal.show();
+      }
+    });
+  });
+</script>
+</script>
+
+<!-- Modal de Visualização de Imagem -->
+<div
+  class="modal fade"
+  id="imageModal"
+  tabindex="-1"
+  aria-labelledby="imageModalLabel"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageModalLabel">Visualizar Imagem</h5>
+        <small class="text-muted ms-2" id="imageModalFilename"></small>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body text-center">
+        <div
+          id="imageLoadError"
+          class="alert alert-warning"
+          style="display: none"
+        >
+          Erro ao carregar a imagem
+        </div>
+        <img
+          id="modalImage"
+          src=""
+          alt="Imagem"
+          class="img-fluid rounded shadow"
+          style="max-height: 70vh"
+        />
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          data-bs-dismiss="modal"
+        >
+          <i class="bi bi-x-circle"></i> Fechar
+        </button>
+        <button type="button" class="btn btn-primary" id="downloadImageBtn">
+          <i class="bi bi-download"></i> Download
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
