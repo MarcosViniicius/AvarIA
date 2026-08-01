@@ -1,0 +1,556 @@
+"""
+PIPELINE DE PROCESSAMENTO (orquestração)
+
+Ponto de entrada equivalente ao antigo script extrair-dados.py: carrega a
+configuração, varre imagens_para_analisar/, chama a IA em lotes (via
+ai_extraction), grava o relatório Excel (via excel_report) e registra o
+histórico da execução no banco SQLite (via db). Também expõe a reanálise de
+erros usada pela tela de relatório.
+"""
+
+import concurrent.futures
+import json
+import os
+import time
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from tqdm import tqdm
+
+from ..core.paths import (
+    ARCHIVE_FOLDER,
+    ARQUIVO_SAIDA_EXCEL,
+    CONFIG_FILE,
+    DATA_ROOT,
+    LOG_CONSUMO_FILE,
+    LOG_PROCESSADOS_FILE,
+    UPLOAD_FOLDER,
+)
+from . import ai_extraction, catalogo, conversa, db, image_archive
+from .ai import construir_provedor_de_config, obter_api_key_do_provedor
+from .excel_report import salvar_relatorio_excel
+from .extraction_engines import MODO_IA, MODO_SEM_IA, MODOS_DISPONIVEIS, construir_motor
+from .reports import criar_gerenciador
+
+EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
+MAX_RETRIES = 3
+CANCEL_FILE = DATA_ROOT / ".cancel_processing"
+
+
+def carregar_configuracao() -> Dict[str, Any]:
+    """Carrega configurações do arquivo config/config.json."""
+    config_padrao = {
+        "api": {
+            "provider": "gemini",
+            "gemini_api_key": "",
+            "openai_api_key": "",
+            "anthropic_api_key": "",
+        },
+        "processamento": {
+            "modelo_gemini": "gemini-1.5-flash",
+            "temperatura": 0.1,
+            "max_tokens": 1000,
+            "timeout": 30,
+        },
+    }
+
+    try:
+        if CONFIG_FILE.exists():
+            print(f"📄 Arquivo de configuração encontrado: {CONFIG_FILE}")
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                provider_name = (config.get("api", {}).get("provider") or "gemini").lower()
+                api_key = obter_api_key_do_provedor(config, provider_name)
+                if api_key and api_key.strip() and api_key != "SUA_CHAVE_AI_AQUI":
+                    print(f"✅ API Key do provedor '{provider_name}' encontrada na configuração")
+                else:
+                    print(f"⚠️ API Key do provedor '{provider_name}' não encontrada ou inválida")
+                return config
+        print("⚠️ Nenhum arquivo de configuração encontrado, usando configuração padrão")
+        return config_padrao
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar configuração: {e}")
+        return config_padrao
+
+
+class ProcessingConfig:
+    """Configurações centralizadas do processamento, validadas na criação."""
+
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        provider_name: str,
+        api_key: str,
+        tamanho_lote: int,
+        max_workers: int,
+        requer_ia: bool = True,
+    ):
+        # Fallbacks alinhados com config_padrao em services/config_service.py -
+        # na prática quase nunca disparam (a config sempre chega com essas
+        # chaves preenchidas), mas divergir deles é uma armadilha à toa.
+        self.temperatura = config.get("processamento", {}).get("temperatura", 0.1)
+        self.max_tokens = config.get("processamento", {}).get("max_tokens", 4000)
+        self.timeout = config.get("processamento", {}).get("timeout", 60)
+        self._provider_name = provider_name
+        self._api_key = api_key
+        self._tamanho_lote = tamanho_lote
+        self._max_workers = max_workers
+        self._requer_ia = requer_ia
+        self.validate_settings()
+
+    def validate_settings(self) -> None:
+        # No modo sem IA (só código de barras) não há provedor nem chave para
+        # validar - o motor não faz nenhuma chamada de IA.
+        if self._requer_ia and (
+            not self._api_key or self._api_key.strip() == "" or "SUA_CHAVE_AI_AQUI" in self._api_key
+        ):
+            print("❌ Problemas encontrados na configuração da API:")
+            print(f"   - Provedor selecionado: {self._provider_name}")
+            print(f"   - API Key: {'Vazia' if not self._api_key or self._api_key.strip() == '' else 'Inválida'}")
+            print(f"   - Arquivo de config usado: {CONFIG_FILE}")
+            print("💡 Soluções:")
+            print("   1. Verifique se o arquivo config/config.json existe")
+            print(f"   2. Configure a API Key do provedor '{self._provider_name}' na interface web (aba Configurações)")
+            print("   3. Certifique-se de que a chave não está vazia")
+            raise ValueError(f"Chave da API do provedor '{self._provider_name}' não configurada. Configure na interface web.")
+        if self._tamanho_lote <= 0:
+            raise ValueError("Tamanho do lote deve ser maior que zero.")
+        if self._max_workers <= 0:
+            raise ValueError("Número de workers deve ser maior que zero.")
+
+
+# ================================
+# UTILITÁRIOS E LOGS
+# ================================
+
+
+def verificar_cancelamento() -> bool:
+    """Verifica se o processamento foi cancelado."""
+    if CANCEL_FILE.exists():
+        try:
+            CANCEL_FILE.unlink()
+        except OSError:
+            pass
+        return True
+    return False
+
+
+def carregar_logs() -> set:
+    """Carrega o conjunto de nomes de arquivos já processados (lê o log_mestre.txt)."""
+    if not LOG_PROCESSADOS_FILE.exists():
+        return set()
+    try:
+        arquivos_processados = set()
+        with open(LOG_PROCESSADOS_FILE, "r", encoding="utf-8") as f:
+            for linha in f:
+                linha = linha.strip()
+                if not linha:
+                    continue
+                # Formato atual: "2026-07-23 23:27:36 - Processado: IMG-0001.jpg"
+                if " - Processado: " in linha:
+                    arquivos_processados.add(linha.split(" - Processado: ")[-1])
+                else:
+                    # Formato legado: apenas o nome do arquivo
+                    arquivos_processados.add(linha)
+        return arquivos_processados
+    except IOError as e:
+        print(f"⚠️ Erro ao ler log de arquivos processados: {e}")
+        return set()
+
+
+def listar_imagens_pendentes(diretorio_imagens: Optional[str] = None) -> list:
+    """Lista, em ordem, os arquivos de imagem de `diretorio_imagens` que ainda
+    não estão em log_mestre.txt.
+
+    Fonte única desta verificação — antes existiam duas implementações
+    quase idênticas (uma aqui, outra em routes/processing.py), e a de lá
+    comparava nome de arquivo contra a LINHA INTEIRA do log (incluindo o
+    timestamp), o que nunca dava match e fazia aquele contador de "novas
+    imagens" mentir. Consolidado para as duas nunca mais divergirem.
+    """
+    diretorio_imagens = diretorio_imagens or str(UPLOAD_FOLDER)
+    if not os.path.isdir(diretorio_imagens):
+        return []
+    processadas = carregar_logs()
+    return sorted(
+        f
+        for f in os.listdir(diretorio_imagens)
+        if f.lower().endswith(EXTENSOES_IMAGEM) and f not in processadas
+    )
+
+
+def registrar_log(nome_arquivo: str) -> None:
+    """Registra um arquivo como processado no log."""
+    try:
+        LOG_PROCESSADOS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_PROCESSADOS_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{timestamp} - Processado: {nome_arquivo}\n")
+    except Exception as e:
+        print(f"❌ Erro ao salvar log de arquivos: {e}")
+
+
+def registrar_consumo_log(total_tokens: int, detalhes_extras: str = "") -> None:
+    """Salva o consumo total de tokens com data e hora em um arquivo de log."""
+    try:
+        LOG_CONSUMO_FILE.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"{timestamp} - Tokens consumidos: {total_tokens:,}"
+        if detalhes_extras:
+            log_entry += f" - {detalhes_extras}"
+        with open(LOG_CONSUMO_FILE, "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
+        print(f"📝 Log de consumo salvo: {total_tokens:,} tokens")
+    except Exception as e:
+        print(f"❌ Erro inesperado ao salvar log: {e}")
+
+
+def _linha_de_erro(nome_arquivo: str, detalhe: str, mensagens_por_imagem: Dict[str, str], diretorio_imagens: str) -> Dict[str, str]:
+    """Monta uma linha da aba "Erros de Análise" para um arquivo que não pôde ser analisado."""
+    caminho_absoluto = os.path.abspath(os.path.join(diretorio_imagens, nome_arquivo))
+    return {
+        "Arquivo": nome_arquivo,
+        "Detalhes do Erro": detalhe,
+        "Observação da Mensagem": mensagens_por_imagem.get(nome_arquivo, "Nenhuma"),
+        "Caminho da Imagem": caminho_absoluto,
+        "Ver Imagem": caminho_absoluto,
+    }
+
+
+def _persistir_lote(run_id: Optional[int], avarias, usos_internos, erros) -> None:
+    """Grava os resultados de UM lote no Excel e no banco.
+
+    Chamado a cada lote (em vez de só no fim de tudo) para que uma
+    interrupção no meio do processamento não descarte o trabalho já feito
+    nem deixe imagens marcadas como processadas sem dado correspondente.
+    """
+    if not (avarias or usos_internos or erros):
+        return
+
+    salvar_relatorio_excel(str(ARQUIVO_SAIDA_EXCEL), avarias, usos_internos, erros)
+
+    if run_id is not None:
+        db.registrar_itens(run_id, "Avarias", avarias)
+        db.registrar_itens(run_id, "Uso Interno", usos_internos)
+        db.registrar_itens(run_id, "Erros de Análise", erros)
+
+
+# ================================
+# PIPELINE PRINCIPAL
+# ================================
+
+
+def main(modo_extracao: Optional[str] = None) -> None:
+    """Processa as imagens novas em imagens_para_analisar/ e atualiza o relatório mestre.
+
+    Args:
+        modo_extracao: "ia" (padrão), "sem_ia" (só código de barras, sem custo
+            de IA) ou "hibrido" (código de barras primeiro, IA no que faltar).
+            Se omitido, usa `processamento.modo_extracao` do config.json.
+    """
+    print("\n" + "=" * 70)
+    print("🚀 ANALISADOR MESTRE DE IMAGENS E MENSAGENS")
+    print(f"⏰ Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    print("=" * 70 + "\n")
+
+    run_id: Optional[int] = None
+    try:
+        config = carregar_configuracao()
+        provider_name = (config.get("api", {}).get("provider") or "gemini").lower()
+        api_key = obter_api_key_do_provedor(config, provider_name)
+        tamanho_lote = config.get("processamento", {}).get("tamanho_lote", 12)
+        max_workers = config.get("processamento", {}).get("max_workers", 3)
+        request_delay = config.get("processamento", {}).get("request_delay", 2.0)
+        modo_extracao = (modo_extracao or config.get("processamento", {}).get("modo_extracao") or MODO_IA).lower()
+        requer_ia = modo_extracao != MODO_SEM_IA
+
+        processing_config = ProcessingConfig(
+            config, provider_name, api_key, tamanho_lote, max_workers, requer_ia=requer_ia
+        )
+
+        print("⚙️  CONFIGURAÇÕES DE PROCESSAMENTO:")
+        print("-" * 50)
+        print(f"   🎯 Modo de extração: {MODOS_DISPONIVEIS.get(modo_extracao, modo_extracao)}")
+        print(f"   📦 Tamanho do lote: {tamanho_lote} imagens por requisição")
+        print(f"   ⚡ Workers paralelos: {max_workers} threads")
+        print(f"   ⏱️  Delay entre requisições: {request_delay}s")
+        if requer_ia:
+            print(f"   🤖 Provedor: {provider_name} | Modelo: {config.get('api', {}).get('modelo_selecionado', '?')}")
+            print(f"   🌡️  Temperatura: {processing_config.temperatura}")
+            print(f"   📊 Max Tokens: {processing_config.max_tokens}")
+        print("-" * 50 + "\n")
+
+        if not UPLOAD_FOLDER.exists():
+            UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+            print(f"📁 Diretório criado: {UPLOAD_FOLDER}")
+            print("⚠️  ATENÇÃO: Adicione suas imagens (.jpg, .png) e o arquivo .txt de mensagens")
+            return
+
+        imagens_processadas = carregar_logs()
+        print(f"📝 Histórico: {len(imagens_processadas)} arquivos já processados anteriormente\n")
+
+        provider = None
+        if requer_ia:
+            print(f"🔑 Configurando acesso à API do provedor '{provider_name}'...")
+            provider = construir_provedor_de_config(config)
+            print(f"✅ {provider.nome_provedor} configurado e pronto para uso\n")
+
+        dias_para_reverificar = config.get("processamento", {}).get(
+            "dias_para_reverificar_peso", catalogo.DIAS_PARA_REVERIFICAR_PADRAO
+        )
+        motor = construir_motor(modo_extracao, provider, dias_para_reverificar=dias_para_reverificar)
+        print(f"⚙️  Motor de extração ativo: {motor.nome}\n")
+
+        diretorio_imagens = str(UPLOAD_FOLDER)
+        imagens_para_processar = [
+            os.path.join(diretorio_imagens, f)
+            for f in listar_imagens_pendentes(diretorio_imagens)
+        ]
+
+        if not imagens_para_processar:
+            print("✅ PROCESSAMENTO COMPLETO: Todas as imagens já foram analisadas\n")
+            return
+
+        run_id = db.iniciar_execucao("processamento", imagens_total=len(imagens_para_processar))
+
+        lotes_de_imagens = [
+            imagens_para_processar[i : i + tamanho_lote]
+            for i in range(0, len(imagens_para_processar), tamanho_lote)
+        ]
+
+        print("📊 ESTATÍSTICAS DE PROCESSAMENTO:")
+        print("-" * 50)
+        print(f"   🖼️  Novas imagens detectadas: {len(imagens_para_processar)}")
+        print(f"   📦 Lotes criados: {len(lotes_de_imagens)} (máx. {tamanho_lote} imagens/lote)")
+        print("-" * 50 + "\n")
+
+        contextos = conversa.mapear_contextos(diretorio_imagens)
+        mensagens_por_imagem = {img: ctx.texto for img, ctx in contextos.items() if ctx.texto}
+        novas_avarias, novos_usos_internos, novos_erros = [], [], []
+        total_tokens_consumidos = 0
+
+        print(f"🔄 INICIANDO ANÁLISE ({motor.nome})...")
+        if requer_ia:
+            print("   Prioridade: Texto > Imagem (otimizado para precisão)\n")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_lote = {}
+            for idx, lote in enumerate(lotes_de_imagens):
+                if idx > 0 and requer_ia:
+                    time.sleep(request_delay)
+                future_to_lote[executor.submit(motor.processar_lote, lote, contextos)] = lote
+
+            with tqdm(total=len(imagens_para_processar), desc="Analisando", unit="img") as pbar:
+                for future in concurrent.futures.as_completed(future_to_lote):
+                    if verificar_cancelamento():
+                        print("\n⚠️ Processamento cancelado pelo usuário")
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        db.finalizar_execucao(
+                            run_id, "cancelado", len(novas_avarias), len(novos_usos_internos),
+                            len(novos_erros), total_tokens_consumidos, "Cancelado pelo usuário",
+                        )
+                        return
+
+                    lote_processado_caminhos = future_to_lote[future]
+                    lote_processado_nomes = [os.path.basename(p) for p in lote_processado_caminhos]
+
+                    # Resultados DESTE lote, isolados: eles são gravados em disco
+                    # antes de o lote ser marcado como processado (ver abaixo).
+                    avarias_lote, usos_lote, erros_lote = [], [], []
+                    try:
+                        resultados_lote, tokens_do_lote = future.result()
+                        total_tokens_consumidos += tokens_do_lote
+                        for nome_arquivo in lote_processado_nomes:
+                            ai_extraction.processar_resultado_arquivo(
+                                nome_arquivo, resultados_lote, mensagens_por_imagem, diretorio_imagens,
+                                avarias_lote, usos_lote, erros_lote,
+                            )
+                    except Exception as e:
+                        print(f"❌ Erro crítico no processamento do lote: {e}")
+                        # Registrar como erro (em vez de sumir): assim os arquivos
+                        # aparecem na aba "Erros de Análise" e podem ser reanalisados.
+                        for nome in lote_processado_nomes:
+                            erros_lote.append(_linha_de_erro(nome, f"Erro no processamento do lote: {e}",
+                                                             mensagens_por_imagem, diretorio_imagens))
+
+                    # ORDEM IMPORTA: gravar primeiro, marcar como processado depois.
+                    # Se o processo for interrompido/morto no meio da execução, os
+                    # arquivos ainda não gravados continuam "não processados" e são
+                    # reanalisados na próxima execução, em vez de sumirem para sempre.
+                    _persistir_lote(run_id, avarias_lote, usos_lote, erros_lote)
+                    for nome in lote_processado_nomes:
+                        registrar_log(nome)
+
+                    # Arquivar (mover + recomprimir) as imagens processadas com
+                    # sucesso, para saírem da pasta de pendentes. Imagens com
+                    # erro ficam onde estão - reanalisar_erros() precisa achá-las
+                    # por nome em diretorio_imagens para poder reprocessá-las.
+                    nomes_com_erro_lote = {erro["Arquivo"] for erro in erros_lote}
+                    for nome in lote_processado_nomes:
+                        if nome not in nomes_com_erro_lote:
+                            image_archive.arquivar_imagem(nome, diretorio_imagens, ARCHIVE_FOLDER)
+
+                    pbar.update(len(lote_processado_nomes))
+
+                    novas_avarias.extend(avarias_lote)
+                    novos_usos_internos.extend(usos_lote)
+                    novos_erros.extend(erros_lote)
+
+        db.registrar_consumo_tokens(run_id, total_tokens_consumidos, f"{len(imagens_para_processar)} imagens")
+        db.finalizar_execucao(
+            run_id, "concluido", len(novas_avarias), len(novos_usos_internos),
+            len(novos_erros), total_tokens_consumidos,
+        )
+
+        total_imagens = len(imagens_para_processar)
+        detalhes = (
+            f"Processamento de {total_imagens} imagens, {len(novas_avarias)} avarias, "
+            f"{len(novos_usos_internos)} uso interno, {len(novos_erros)} erros"
+        )
+        registrar_consumo_log(total_tokens_consumidos, detalhes)
+
+        print("\n" + "=" * 70)
+        print("✅ ANÁLISE CONCLUÍDA COM SUCESSO!")
+        print(f"   ✅ Avarias identificadas: {len(novas_avarias)}")
+        print(f"   🏭 Uso interno identificado: {len(novos_usos_internos)}")
+        print(f"   ❌ Erros encontrados: {len(novos_erros)}")
+        print(f"   🪙 Total de tokens consumidos: {total_tokens_consumidos:,}")
+        print(f"   💾 Relatório salvo em: {ARQUIVO_SAIDA_EXCEL}")
+        print("=" * 70 + "\n")
+
+    except Exception as e:
+        print("\n❌ ERRO CRÍTICO na execução principal:")
+        print(f"   Detalhes: {e}")
+        import traceback
+
+        traceback.print_exc()
+        if run_id is not None:
+            db.finalizar_execucao(run_id, "erro", mensagem=str(e))
+
+
+def reanalisar_erros(
+    diretorio_imagens: Optional[str] = None,
+    arquivo_excel: Optional[str] = None,
+    callback_progresso: Optional[callable] = None,
+) -> Dict[str, Any]:
+    """Reanalisa apenas os itens que falharam na análise anterior."""
+    print("\n🔄 INICIANDO REANÁLISE DE ERROS")
+    print("=" * 60)
+
+    diretorio_imagens = diretorio_imagens or str(UPLOAD_FOLDER)
+    arquivo_excel = arquivo_excel or str(ARQUIVO_SAIDA_EXCEL)
+
+    config = carregar_configuracao()
+    request_delay = config.get("processamento", {}).get("request_delay", 2.0)
+
+    run_id = db.iniciar_execucao("reanalise")
+
+    try:
+        gerenciador = criar_gerenciador(arquivo_excel)
+        arquivos_com_erro = gerenciador.obter_arquivos_com_erro()
+
+        if not arquivos_com_erro:
+            print("✅ Nenhum erro pendente para reanalisar")
+            db.finalizar_execucao(run_id, "concluido", mensagem="Nenhum erro pendente")
+            return {
+                "sucesso": True, "total_arquivos": 0, "processados": 0,
+                "corrigidos": 0, "ainda_com_erro": 0, "detalhes": [],
+            }
+
+        print(f"📋 Encontrados {len(arquivos_com_erro)} arquivos com erro")
+
+        provider = construir_provedor_de_config(config)
+        print(f"✅ {provider.nome_provedor} configurado para a reanálise")
+        mensagens_por_imagem = conversa.mapear_mensagens_para_imagens(diretorio_imagens)
+
+        itens_corrigidos = 0
+        ainda_com_erro = 0
+        tokens_totais = 0
+        detalhes_resultado = []
+
+        for idx, nome_arquivo in enumerate(arquivos_com_erro, 1):
+            if callback_progresso:
+                callback_progresso({"atual": idx, "total": len(arquivos_com_erro), "arquivo": nome_arquivo})
+
+            print(f"\n[{idx}/{len(arquivos_com_erro)}] Reanalisando: {nome_arquivo}")
+            caminho_imagem = os.path.join(diretorio_imagens, nome_arquivo)
+
+            if not os.path.exists(caminho_imagem):
+                print(f"   ⚠️ Arquivo não encontrado: {caminho_imagem}")
+                detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": "Arquivo não encontrado"})
+                ainda_com_erro += 1
+                gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", "Arquivo não encontrado")
+                continue
+
+            try:
+                resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                tokens_totais += tokens
+                dados = resultado.get(nome_arquivo)
+
+                if dados and dados.get("tipo") != "Erro":
+                    print(f"   ✅ Corrigido com sucesso: {dados.get('tipo')}")
+                    tipo = dados.get("tipo")
+                    novas_avarias, novos_usos_internos, novos_erros = [], [], []
+
+                    ai_extraction.processar_resultado_arquivo(
+                        nome_arquivo, resultado, mensagens_por_imagem, diretorio_imagens,
+                        novas_avarias, novos_usos_internos, novos_erros,
+                    )
+
+                    salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos_internos, novos_erros)
+                    db.registrar_itens(run_id, "Avarias", novas_avarias)
+                    db.registrar_itens(run_id, "Uso Interno", novos_usos_internos)
+
+                    gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=True)
+                    if not novos_erros:
+                        image_archive.arquivar_imagem(nome_arquivo, diretorio_imagens, ARCHIVE_FOLDER)
+
+                    itens_corrigidos += 1
+                    detalhes_resultado.append({"arquivo": nome_arquivo, "status": "sucesso", "tipo": tipo})
+                    gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "sucesso", f"Tipo: {tipo}")
+                else:
+                    erro_detalhes = dados.get("detalhes", "Erro desconhecido") if dados else "Sem resposta"
+                    print(f"   ❌ Ainda com erro: {erro_detalhes}")
+                    ainda_com_erro += 1
+                    detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": erro_detalhes})
+                    gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=False)
+                    gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", erro_detalhes)
+
+                if idx < len(arquivos_com_erro):
+                    time.sleep(request_delay)
+
+            except Exception as e:
+                print(f"   ❌ Erro ao reanalisar: {e}")
+                ainda_com_erro += 1
+                detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": str(e)})
+                gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", str(e))
+
+        print("\n" + "=" * 60)
+        print("✅ REANÁLISE CONCLUÍDA")
+        print(f"   📊 Total de arquivos: {len(arquivos_com_erro)}")
+        print(f"   ✅ Corrigidos: {itens_corrigidos}")
+        print(f"   ❌ Ainda com erro: {ainda_com_erro}")
+        print("=" * 60)
+
+        db.registrar_consumo_tokens(run_id, tokens_totais, f"Reanálise de {len(arquivos_com_erro)} arquivos")
+        db.finalizar_execucao(run_id, "concluido", uso_interno=0, erros=ainda_com_erro, tokens_consumidos=tokens_totais)
+
+        return {
+            "sucesso": True,
+            "total_arquivos": len(arquivos_com_erro),
+            "processados": len(arquivos_com_erro),
+            "corrigidos": itens_corrigidos,
+            "ainda_com_erro": ainda_com_erro,
+            "detalhes": detalhes_resultado,
+        }
+
+    except Exception as e:
+        print(f"\n❌ Erro crítico na reanálise: {e}")
+        import traceback
+
+        traceback.print_exc()
+        db.finalizar_execucao(run_id, "erro", mensagem=str(e))
+        return {
+            "sucesso": False, "erro": str(e), "total_arquivos": 0,
+            "processados": 0, "corrigidos": 0, "ainda_com_erro": 0, "detalhes": [],
+        }

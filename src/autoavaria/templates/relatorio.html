@@ -16,7 +16,18 @@ endblock %} {% block head %}
           <i class="bi bi-file-earmark-excel text-success me-2"></i>Relatório de
           Análise
         </h1>
+        {% if execucao %}
+        <p class="text-muted mb-0">
+          Mostrando apenas a última execução (#{{ execucao.id }}, {{ execucao.iniciado_em }}).
+          Para ver análises anteriores, acesse o
+          <a href="{{ url_for('historico') }}">Histórico</a>.
+        </p>
+        <p class="text-muted small">
+          Os botões Excel/TXT abaixo exportam o histórico completo (todas as análises). "Unificar Relatório" usa só o que está sendo mostrado aqui, esta execução.
+        </p>
+        {% else %}
         <p class="text-muted">Resultados detalhados da análise de produtos</p>
+        {% endif %}
       </div>
       <div>
         <a
@@ -277,9 +288,9 @@ endblock %} {% block head %}
 >
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header bg-warning text-dark">
-        <h5 class="modal-title" id="reanaliseModalLabel">
-          <i class="bi bi-arrow-clockwise me-2"></i>Reanalisando Erros
+      <div class="modal-header" style="background: rgba(255, 107, 53, 0.2); border-bottom: 1px solid rgba(255, 107, 53, 0.3);">
+        <h5 class="modal-title" id="reanaliseModalLabel" style="color: #FFFFFF;">
+          <i class="bi bi-arrow-clockwise me-2" style="color: #FF6B35;"></i>Reanalisando Erros
         </h5>
       </div>
       <div class="modal-body">
@@ -1308,9 +1319,9 @@ window.addEventListener('unhandledrejection', function(event) {
 <div class="modal fade" id="unificacaoModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header bg-warning text-dark">
-        <h5 class="modal-title">
-          <i class="bi bi-funnel me-2"></i>Unificação de Relatório
+      <div class="modal-header" style="background: rgba(255, 107, 53, 0.2); border-bottom: 1px solid rgba(255, 107, 53, 0.3);">
+        <h5 class="modal-title" style="color: #FFFFFF;">
+          <i class="bi bi-funnel me-2" style="color: #FF6B35;"></i>Unificação de Relatório
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnFecharUnificacao"></button>
       </div>
@@ -1351,7 +1362,7 @@ window.addEventListener('unhandledrejection', function(event) {
           
           <!-- Seleção de Seções e Colunas -->
           <div class="card mb-3">
-            <div class="card-header bg-light">
+            <div class="card-header bg-transparent">
               <h6 class="mb-0">
                 <i class="bi bi-sliders me-2"></i>Personalizar Exportação
               </h6>

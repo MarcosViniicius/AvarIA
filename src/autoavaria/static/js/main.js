@@ -280,43 +280,61 @@ function monitorarProgresso() {
       window.open("/relatorio", "_self");
     });
   }
+
+  // Primeira atualização imediata
+  updateProgressUI({
+    progresso: 0,
+    status: "Conectando com servidor...",
+    logs: [`🚀 Iniciando processamento às ${new Date().toLocaleTimeString()}`],
+  });
+
+  iniciarPollingDeStatus();
 }
 
-// Primeira atualização imediata
-updateProgressUI({
-  progresso: 0,
-  status: "Conectando com servidor...",
-  logs: [`🚀 Iniciando processamento às ${new Date().toLocaleTimeString()}`],
-});
+/**
+ * Inicia o polling de /status a cada CONFIG.progressUpdateInterval.
+ *
+ * Só deve ser chamado quando já sabemos que há um processamento ativo
+ * (via monitorarProgresso()) — nunca incondicionalmente no carregamento da
+ * página. Antes, esse polling rodava para sempre em TODA página do site,
+ * mesmo sem nenhum processamento em andamento, porque nada nunca satisfazia
+ * a condição de parada (progresso 0 e status "Aguardando" não contém
+ * "Erro"/"concluído"/"cancelado").
+ */
+function iniciarPollingDeStatus() {
+  if (APP_STATE.progressTimer) {
+    return; // já está rodando, não duplicar o intervalo
+  }
 
-APP_STATE.progressTimer = setInterval(() => {
-  fetch("/status")
-    .then((response) => response.json())
-    .then((data) => {
-      updateProgressUI(data);
+  APP_STATE.progressTimer = setInterval(() => {
+    fetch("/status")
+      .then((response) => response.json())
+      .then((data) => {
+        updateProgressUI(data);
 
-      if (
-        data.progresso >= 100 ||
-        data.status.includes("Erro") ||
-        data.status.includes("concluído") ||
-        data.status.includes("cancelado")
-      ) {
-        finalizarMonitoramento(data);
-      }
-    })
-    .catch((error) => {
-      console.error("Erro ao obter status:", error);
-      APP_STATE.retryCount++;
+        if (
+          data.progresso >= 100 ||
+          data.status.includes("Erro") ||
+          data.status.includes("concluído") ||
+          data.status.includes("cancelado")
+        ) {
+          finalizarMonitoramento(data);
+        }
+      })
+      .catch((error) => {
+        console.error("Erro ao obter status:", error);
+        APP_STATE.retryCount++;
 
-      if (APP_STATE.retryCount >= CONFIG.maxRetries) {
-        finalizarMonitoramento({
-          status: "Erro de conexão",
-          progresso: 0,
-          logs: ["❌ Falha na comunicação com o servidor"],
-        });
-      }
-    });
-}, CONFIG.progressUpdateInterval);
+        if (APP_STATE.retryCount >= CONFIG.maxRetries) {
+          finalizarMonitoramento({
+            status: "Erro de conexão",
+            progresso: 0,
+            logs: ["❌ Falha na comunicação com o servidor"],
+          });
+        }
+      });
+  }, CONFIG.progressUpdateInterval);
+}
 
 /**
  * Atualiza a interface do progresso

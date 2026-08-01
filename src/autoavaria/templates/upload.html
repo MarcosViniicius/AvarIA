@@ -16,7 +16,7 @@ endblock %} {% block content %}
         <!-- Área de Drop Zone -->
         <div
           id="dropZone"
-          class="border-dashed rounded p-5 text-center mb-4 bg-light"
+          class="border-dashed rounded p-5 text-center mb-4"
         >
           <div id="dropZoneContent">
             <i class="bi bi-cloud-upload display-1 text-muted mb-3"></i>
@@ -152,9 +152,15 @@ endblock %} {% block content %}
           </div>
         </div>
 
-        <div class="mt-3">
+        <div class="mt-3 d-flex gap-2 justify-content-center">
           <button id="refreshStatusBtn" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-arrow-clockwise me-1"></i>Atualizar Status
+          </button>
+          <!-- Só aparece quando há imagens pendentes (ver atualizarStatus) -
+               fecha o buraco entre "enviei os arquivos" e "e agora?", que
+               antes exigia o usuário lembrar sozinho de ir ao Dashboard. -->
+          <button id="processarAgoraBtn" class="btn btn-success btn-sm d-none">
+            <i class="bi bi-play-fill me-1"></i>Processar Agora
           </button>
         </div>
       </div>
@@ -173,6 +179,7 @@ endblock %} {% block content %}
     const uploadBtn = document.getElementById("uploadBtn");
     const alertContainer = document.getElementById("alertContainer");
     const refreshStatusBtn = document.getElementById("refreshStatusBtn");
+    const processarAgoraBtn = document.getElementById("processarAgoraBtn");
 
     let selectedFiles = [];
 
@@ -185,6 +192,37 @@ endblock %} {% block content %}
     clearFilesBtn.addEventListener("click", clearFiles);
     uploadBtn.addEventListener("click", uploadFiles);
     refreshStatusBtn.addEventListener("click", atualizarStatus);
+    processarAgoraBtn.addEventListener("click", iniciarProcessamento);
+
+    function iniciarProcessamento() {
+      processarAgoraBtn.disabled = true;
+      processarAgoraBtn.innerHTML =
+        '<i class="bi bi-arrow-clockwise spin me-1"></i>Iniciando...';
+
+      fetch("/processar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            showAlert("success", data.message);
+            // monitorarProgresso() é global (static/js/main.js) e abre o
+            // mesmo modal de progresso usado no Dashboard.
+            monitorarProgresso();
+          } else {
+            showAlert("danger", data.message);
+            processarAgoraBtn.disabled = false;
+            processarAgoraBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Processar Agora';
+          }
+        })
+        .catch((error) => {
+          showAlert("danger", "Erro ao iniciar processamento: " + error);
+          processarAgoraBtn.disabled = false;
+          processarAgoraBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Processar Agora';
+        });
+    }
 
     // Drag and drop
     dropZone.addEventListener("dragover", (e) => {
@@ -444,6 +482,8 @@ endblock %} {% block content %}
             stats.imagens_processadas;
           document.getElementById("currentPending").textContent =
             stats.imagens_pendentes;
+
+          processarAgoraBtn.classList.toggle("d-none", !(stats.imagens_pendentes > 0));
         })
         .catch((error) => {
           console.error("Erro ao atualizar status:", error);

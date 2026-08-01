@@ -125,6 +125,10 @@ imagens_para_analisar/*
 !imagens_para_analisar/.gitkeep
 !imagens_para_analisar/*.opus
 
+# Imagens já processadas e arquivadas (ver services/image_archive.py)
+imagens_processadas/*
+!imagens_processadas/.gitkeep
+
 # Backups de relatórios
 *.xlsx.bak
 Relatorio_Backup_*.xlsx

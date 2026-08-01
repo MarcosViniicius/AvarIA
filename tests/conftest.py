@@ -1,0 +1,24 @@
+"""Configuração compartilhada dos testes: coloca src/ no path e fornece um
+banco SQLite temporário isolado (nunca toca em database/autoavaria.db real)."""
+
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+import pytest
+
+
+@pytest.fixture
+def tmp_db(tmp_path, monkeypatch):
+    """Redireciona o banco para um arquivo temporário e cria o schema."""
+    from autoavaria.services import db
+
+    db_path = tmp_path / "teste.db"
+    monkeypatch.setattr(db, "DATABASE_DIR", tmp_path)
+    monkeypatch.setattr(db, "DATABASE_FILE", db_path)
+    db.init_db()
+    return db

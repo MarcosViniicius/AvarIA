@@ -1,7 +1,10 @@
 """
 GERENCIADOR DE ERROS E REANÁLISE
-Módulo isolado para rastreamento e reanálise de itens com erro
-Criado em: 24/01/2026
+
+Rastreia os itens que caíram na aba "Erros de Análise" do relatório Excel e
+apoia o fluxo de reanálise (usado por services/extraction_pipeline.py).
+Observação: este módulo cuida de erros, não da geração de relatórios em si
+— o nome do arquivo (reports.py) é histórico.
 """
 
 import os
@@ -9,6 +12,8 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import pandas as pd
+
+from .report_editing import carregar_todas_sheets
 
 
 class GerenciadorErros:
@@ -93,7 +98,7 @@ class GerenciadorErros:
                 return
 
             # Carregar todas as abas
-            sheets = pd.read_excel(self.arquivo_excel, sheet_name=None, engine="openpyxl")
+            sheets = carregar_todas_sheets(self.arquivo_excel)
             
             if "Erros de Análise" not in sheets:
                 return
@@ -200,11 +205,6 @@ class GerenciadorErros:
             "arquivos": [erro.get("Arquivo") for erro in erros]
         }
 
-    def limpar_cache(self):
-        """Limpa o cache de erros."""
-        self.cache_erros = None
-        self.cache_timestamp = None
-
 
 # Função auxiliar para uso direto
 def criar_gerenciador(arquivo_excel: str = None) -> GerenciadorErros:
@@ -226,16 +226,3 @@ def criar_gerenciador(arquivo_excel: str = None) -> GerenciadorErros:
         )
     
     return GerenciadorErros(arquivo_excel)
-
-
-if __name__ == "__main__":
-    # Teste básico
-    print("🧪 Testando Gerenciador de Erros...")
-    
-    gerenciador = criar_gerenciador()
-    resumo = gerenciador.gerar_resumo_erros()
-    
-    print(f"\n📊 Resumo de Erros:")
-    print(f"   Total: {resumo['total']}")
-    print(f"   Tipos: {resumo['tipos']}")
-    print(f"   Arquivos: {resumo['arquivos'][:5]}...")  # Primeiros 5

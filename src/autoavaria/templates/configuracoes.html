@@ -24,7 +24,7 @@
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab">
-              <i class="bi bi-sliders me-2"></i>Detalhes Avançados
+              <i class="bi bi-diagram-3 me-2"></i>Modo de Processamento
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -190,85 +190,44 @@
           <!-- Aba Detalhes Avançados -->
           <div class="tab-pane fade" id="advanced" role="tabpanel">
             <form id="configAdvancedForm">
-              <div class="alert alert-info">
-                <i class="bi bi-info-circle me-2"></i>
-                <strong>Atenção:</strong> Altere esses parâmetros apenas se souber o que está fazendo. Valores inadequados podem afetar a qualidade e custo da análise.
-              </div>
-
               <div class="row">
-                <!-- Temperatura -->
-                <div class="col-md-6 mb-3">
-                  <label for="temperatura" class="form-label fw-bold">
-                    <i class="bi bi-thermometer-half me-2"></i>Temperatura
+                <!-- Modo de Extração -->
+                <div class="col-md-8 mb-3">
+                  <label for="modoExtracao" class="form-label fw-bold">
+                    <i class="bi bi-diagram-3 me-2"></i>Modo de Extração (padrão)
                   </label>
-                  <input type="number" class="form-control" id="temperatura" 
-                         value="{{ config.processamento.temperatura }}" 
-                         min="0" max="2" step="0.1">
-                  <div class="form-text">Controla a criatividade das respostas (0-2). Valores mais baixos = mais determinístico</div>
-                </div>
-
-                <!-- Max Tokens -->
-                <div class="col-md-6 mb-3">
-                  <label for="maxTokens" class="form-label fw-bold">
-                    <i class="bi bi-textarea-t me-2"></i>Max Tokens
-                  </label>
-                  <input type="number" class="form-control" id="maxTokens" 
-                         value="{{ config.processamento.max_tokens }}" 
-                         min="100" max="8000" step="100">
-                  <div class="form-text">Tamanho máximo da resposta (100-8000)</div>
-                </div>
-
-                <!-- Timeout -->
-                <div class="col-md-6 mb-3">
-                  <label for="timeout" class="form-label fw-bold">
-                    <i class="bi bi-clock me-2"></i>Timeout (segundos)
-                  </label>
-                  <input type="number" class="form-control" id="timeout" 
-                         value="{{ config.processamento.timeout }}" 
-                         min="10" max="120" step="5">
-                  <div class="form-text">Tempo máximo de espera por resposta (10-120s)</div>
-                </div>
-
-                <!-- Tamanho do Lote -->
-                <div class="col-md-6 mb-3">
-                  <label for="tamanhoLote" class="form-label fw-bold">
-                    <i class="bi bi-stack me-2"></i>Tamanho do Lote
-                  </label>
-                  <input type="number" class="form-control" id="tamanhoLote" 
-                         value="{{ config.processamento.tamanho_lote }}" 
-                         min="1" max="10" step="1">
-                  <div class="form-text">Quantas imagens processar por requisição (1-10)</div>
-                </div>
-
-                <!-- Max Workers -->
-                <div class="col-md-6 mb-3">
-                  <label for="maxWorkers" class="form-label fw-bold">
-                    <i class="bi bi-cpu me-2"></i>Max Workers
-                  </label>
-                  <input type="number" class="form-control" id="maxWorkers" 
-                         value="{{ config.processamento.max_workers }}" 
-                         min="1" max="5" step="1">
-                  <div class="form-text">Número de threads paralelas (1-5)</div>
-                </div>
-
-                <!-- Request Delay -->
-                <div class="col-md-6 mb-3">
-                  <label for="requestDelay" class="form-label fw-bold">
-                    <i class="bi bi-hourglass-split me-2"></i>Request Delay (segundos)
-                  </label>
-                  <input type="number" class="form-control" id="requestDelay" 
-                         value="{{ config.processamento.request_delay }}" 
-                         min="0.5" max="5" step="0.5">
-                  <div class="form-text">Delay entre requisições (0.5-5s)</div>
+                  <select class="form-select" id="modoExtracao">
+                    <option value="ia" {% if config.processamento.modo_extracao == 'ia' %}selected{% endif %}>🤖 Somente IA</option>
+                    <option value="hibrido" {% if config.processamento.modo_extracao == 'hibrido' %}selected{% endif %}>⚡ Híbrido (código de barras + IA no que faltar)</option>
+                    <option value="sem_ia" {% if config.processamento.modo_extracao == 'sem_ia' %}selected{% endif %}>📷 Sem IA (só código de barras, custo zero)</option>
+                  </select>
+                  <div class="form-text">
+                    Pode ser trocado a qualquer momento na tela inicial, antes de iniciar o processamento.
+                    O modo "Sem IA" lê o código de barras da própria imagem, sem nenhuma chamada de IA;
+                    o "Híbrido" tenta o código de barras primeiro e só usa IA no que não conseguir ler.
+                  </div>
                 </div>
               </div>
+
+              <!-- Parâmetros técnicos (temperatura, tokens, timeout, lote, workers,
+                   delay entre requisições) foram retirados desta tela: são ajustes
+                   de engenharia que não têm como ser respondidos com propriedade
+                   sem entender o funcionamento interno da API, e um valor ruim aqui
+                   só se percebe como "quebrou" ou "ficou caro" - sem ganho real para
+                   quem usa o sistema. Os valores atuais continuam sendo enviados no
+                   salvamento (campos ocultos abaixo) para não resetar configurações
+                   já ajustadas; quem realmente precisar mudar algum desses valores
+                   pode editar config/config.json diretamente. -->
+              <input type="hidden" id="temperatura" value="{{ config.processamento.temperatura }}">
+              <input type="hidden" id="maxTokens" value="{{ config.processamento.max_tokens }}">
+              <input type="hidden" id="timeout" value="{{ config.processamento.timeout }}">
+              <input type="hidden" id="tamanhoLote" value="{{ config.processamento.tamanho_lote }}">
+              <input type="hidden" id="maxWorkers" value="{{ config.processamento.max_workers }}">
+              <input type="hidden" id="requestDelay" value="{{ config.processamento.request_delay }}">
 
               <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <button type="button" class="btn btn-outline-secondary" onclick="resetarConfiguracoesAvancadas()">
-                  <i class="bi bi-arrow-counterclockwise me-2"></i>Resetar Padrões
-                </button>
                 <button type="submit" class="btn btn-primary btn-lg">
-                  <i class="bi bi-check-lg me-2"></i>Salvar Configurações Avançadas
+                  <i class="bi bi-check-lg me-2"></i>Salvar
                 </button>
               </div>
             </form>
@@ -292,6 +251,10 @@
                 <button class="btn btn-outline-info" onclick="criarBackup()">
                   <i class="bi bi-download me-2"></i>Criar Backup
                 </button>
+
+                <a href="{{ url_for('download_config') }}" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-gear me-2"></i>Baixar Backup das Configurações
+                </a>
               </div>
 
               <div class="mt-4 alert alert-info">
@@ -312,7 +275,24 @@
           <div class="tab-pane fade" id="manage" role="tabpanel">
             <div class="row g-3">
               <div class="col-md-4">
-                <div class="card bg-light h-100">
+                <div class="card bg-transparent h-100 border-primary">
+                  <div class="card-body text-center">
+                    <i class="bi bi-arrow-repeat display-3 text-primary mb-3"></i>
+                    <h5>Reprocessar Tudo</h5>
+                    <p class="text-muted small">
+                      Limpa imagens e histórico de processamento juntos, numa ação só —
+                      pronto para enviar e processar do zero (ex.: testar de novo o mesmo lote).
+                      <br /><strong class="text-primary">Não apaga o relatório Excel nem o Histórico.</strong>
+                    </p>
+                    <button class="btn btn-primary clear-data-btn" data-type="reprocessar_tudo">
+                      <i class="bi bi-arrow-repeat me-1"></i>Reprocessar Tudo
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card bg-transparent h-100">
                   <div class="card-body text-center">
                     <i class="bi bi-file-text display-3 text-warning mb-3"></i>
                     <h5>Logs do Sistema</h5>
@@ -327,7 +307,7 @@
               </div>
               
               <div class="col-md-4">
-                <div class="card bg-light h-100">
+                <div class="card bg-transparent h-100">
                   <div class="card-body text-center">
                     <i class="bi bi-file-earmark-excel display-3 text-danger mb-3"></i>
                     <h5>Relatório Excel</h5>
@@ -342,15 +322,31 @@
               </div>
               
               <div class="col-md-4">
-                <div class="card bg-light h-100">
+                <div class="card bg-transparent h-100">
                   <div class="card-body text-center">
                     <i class="bi bi-images display-3 text-info mb-3"></i>
                     <h5>Imagens</h5>
                     <p class="text-muted small">
                       Remover todas as imagens carregadas
+                      <br /><strong class="text-warning">Atenção: quebra o "Ver Imagem" de itens antigos no Histórico.</strong>
                     </p>
                     <button class="btn btn-outline-info clear-data-btn" data-type="imagens">
                       <i class="bi bi-trash me-1"></i>Limpar Imagens
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card bg-transparent h-100">
+                  <div class="card-body text-center">
+                    <i class="bi bi-archive display-3 text-secondary mb-3"></i>
+                    <h5>Exportações Antigas</h5>
+                    <p class="text-muted small">
+                      Mantém só as 30 exportações mais recentes de cada tipo em resultados/
+                    </p>
+                    <button class="btn btn-outline-secondary clear-data-btn" data-type="exportacoes">
+                      <i class="bi bi-trash me-1"></i>Limpar Exportações Antigas
                     </button>
                   </div>
                 </div>
@@ -551,6 +547,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const formData = {
       processamento: {
+        modo_extracao: document.getElementById('modoExtracao').value,
         temperatura: parseFloat(document.getElementById('temperatura').value),
         max_tokens: parseInt(document.getElementById('maxTokens').value),
         timeout: parseInt(document.getElementById('timeout').value),
@@ -589,8 +586,23 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.clear-data-btn').forEach(button => {
     button.addEventListener('click', function() {
       const tipo = this.getAttribute('data-type');
-      const confirmMsg = `Tem certeza que deseja limpar ${tipo}? Esta ação não pode ser desfeita.`;
-      
+      let confirmMsg = `Tem certeza que deseja limpar ${tipo}? Esta ação não pode ser desfeita.`;
+      if (tipo === 'relatorio') {
+        confirmMsg = 'Isso vai APAGAR o relatório Excel atual (Avarias, Uso Interno e Erros de Análise) - ' +
+          'sem backup automático. Se ainda precisa dos dados, cancele e baixe o relatório primeiro ' +
+          '(botão "Baixar Excel" na aba Relatório). Continuar mesmo assim?';
+      } else if (tipo === 'imagens') {
+        confirmMsg = 'Tem certeza que deseja apagar TODAS as imagens? ' +
+          'Itens antigos no Histórico que referenciam essas imagens vão perder o botão "Ver Imagem" para sempre. ' +
+          'Esta ação não pode ser desfeita.';
+      } else if (tipo === 'reprocessar_tudo') {
+        confirmMsg = 'Isso apaga as imagens da pasta e o histórico de processamento (log_mestre.txt), ' +
+          'deixando tudo pronto para enviar e processar do zero. ' +
+          'O relatório Excel e o Histórico NÃO são apagados. Continuar?';
+      } else if (tipo === 'exportacoes') {
+        confirmMsg = 'Isso vai apagar exportações antigas em resultados/, mantendo só as 30 mais recentes de cada tipo. Continuar?';
+      }
+
       if (confirm(confirmMsg)) {
         fetch('/limpar_dados', {
           method: 'POST',
@@ -633,18 +645,6 @@ function togglePasswordVisibility(inputId) {
   }
 }
 
-// Resetar configurações avançadas
-function resetarConfiguracoesAvancadas() {
-  if (confirm('Deseja restaurar as configurações padrão?')) {
-    document.getElementById('temperatura').value = 0.1;
-    document.getElementById('maxTokens').value = 4000;
-    document.getElementById('timeout').value = 30;
-    document.getElementById('tamanhoLote').value = 5;
-    document.getElementById('maxWorkers').value = 2;
-    document.getElementById('requestDelay').value = 1.5;
-    showAlert('info', 'ℹ️ Valores padrão restaurados. Clique em "Salvar" para aplicar.');
-  }
-}
 
 // Criar backup
 function criarBackup() {

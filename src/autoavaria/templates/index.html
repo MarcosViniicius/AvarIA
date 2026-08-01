@@ -10,7 +10,17 @@ endblock %} {% block content %}
         </h1>
         <p class="text-muted">Visão geral do sistema de análise de avarias</p>
       </div>
-      <div>
+      <div class="d-flex align-items-center">
+        <select
+          id="modoExtracaoSelect"
+          class="form-select form-select-sm me-2"
+          style="width: auto"
+          title="Modo de extração dos dados das imagens"
+        >
+          <option value="ia">🤖 Somente IA</option>
+          <option value="hibrido">⚡ Híbrido (código de barras + IA)</option>
+          <option value="sem_ia">📷 Sem IA (só código de barras)</option>
+        </select>
         <button id="refreshBtn" class="btn btn-outline-primary me-2">
           <i class="bi bi-arrow-clockwise"></i> Atualizar
         </button>
@@ -297,7 +307,7 @@ endblock %} {% block content %}
                 <thead class="table-light">
                   <tr>
                     <th>Produto</th>
-                    <th>Detalhes</th>
+                    <th>Peso</th>
                     <th>Observação</th>
                     <th>Ações</th>
                   </tr>
@@ -306,7 +316,7 @@ endblock %} {% block content %}
                   {% for item in resultados.avarias[-5:] %}
                   <tr>
                     <td><strong>{{ item.Produto }}</strong></td>
-                    <td>{{ item.Detalhes }}</td>
+                    <td>{{ item.Peso }}</td>
                     <td class="text-truncate" style="max-width: 200px">
                       {{ item['Observação da Mensagem'] }}
                     </td>
@@ -342,7 +352,8 @@ endblock %} {% block content %}
                 <thead class="table-light">
                   <tr>
                     <th>Produto</th>
-                    <th>Detalhes</th>
+                    <th>Marca</th>
+                    <th>Código de Barras</th>
                     <th>Observação</th>
                     <th>Ações</th>
                   </tr>
@@ -351,7 +362,8 @@ endblock %} {% block content %}
                   {% for item in resultados.uso_interno[-5:] %}
                   <tr>
                     <td><strong>{{ item.Produto }}</strong></td>
-                    <td>{{ item.Detalhes }}</td>
+                    <td>{{ item.Marca }}</td>
+                    <td>{{ item['Código de Barras'] }}</td>
                     <td class="text-truncate" style="max-width: 200px">
                       {{ item['Observação da Mensagem'] }}
                     </td>
@@ -435,15 +447,33 @@ endblock %} {% block content %}
       processBtn2.addEventListener("click", iniciarProcessamento);
     }
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", atualizarStats);
+      // não passar atualizarStats direto: addEventListener chamaria com o
+      // Event do clique como 1º argumento, que o parametro `silencioso`
+      // interpretaria como truthy e silenciaria o clique manual também.
+      refreshBtn.addEventListener("click", () => atualizarStats(false));
+    }
+
+    // Pré-selecionar o modo salvo em Configurações, para o seletor refletir
+    // o padrão do usuário em vez de sempre voltar para "Somente IA".
+    const modoSelect = document.getElementById("modoExtracaoSelect");
+    if (modoSelect) {
+      fetch("/api/configuracoes")
+        .then((r) => r.json())
+        .then((config) => {
+          const modoSalvo = config.processamento?.modo_extracao;
+          if (modoSalvo) modoSelect.value = modoSalvo;
+        })
+        .catch(() => {}); // mantém o padrão do <select> se a leitura falhar
     }
 
     function iniciarProcessamento() {
+      const modo_extracao = modoSelect ? modoSelect.value : undefined;
       fetch("/processar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ modo_extracao }),
       })
         .then((response) => response.json())
         .then((data) => {
@@ -459,11 +489,18 @@ endblock %} {% block content %}
         });
     }
 
-    function atualizarStats() {
+    // silencioso=true (usado pelo auto-refresh de 30s) não mostra o toast de
+    // sucesso nem o spinner do botão - só o clique manual precisa desse
+    // feedback. Sem essa distinção, o usuário recebia um alerta verde a cada
+    // 30s sem ter pedido nada, o que treina a ignorar alertas (inclusive os
+    // de erro de verdade).
+    function atualizarStats(silencioso) {
       const originalText = refreshBtn.innerHTML;
-      refreshBtn.innerHTML =
-        '<i class="bi bi-arrow-clockwise spin"></i> Atualizando...';
-      refreshBtn.disabled = true;
+      if (!silencioso) {
+        refreshBtn.innerHTML =
+          '<i class="bi bi-arrow-clockwise spin"></i> Atualizando...';
+        refreshBtn.disabled = true;
+      }
 
       fetch("/api/stats")
         .then((response) => response.json())
@@ -479,19 +516,25 @@ endblock %} {% block content %}
           document.getElementById("ultimoProcessamento").textContent =
             stats.ultimo_processamento;
 
-          showAlert("success", "Estatísticas atualizadas!");
+          if (!silencioso) {
+            showAlert("success", "Estatísticas atualizadas!");
+          }
         })
         .catch((error) => {
-          showAlert("danger", "Erro ao atualizar: " + error);
+          if (!silencioso) {
+            showAlert("danger", "Erro ao atualizar: " + error);
+          }
         })
         .finally(() => {
-          refreshBtn.innerHTML = originalText;
-          refreshBtn.disabled = false;
+          if (!silencioso) {
+            refreshBtn.innerHTML = originalText;
+            refreshBtn.disabled = false;
+          }
         });
     }
 
-    // Auto-refresh a cada 30 segundos
-    setInterval(atualizarStats, 30000);
+    // Auto-refresh silencioso a cada 30 segundos
+    setInterval(() => atualizarStats(true), 30000);
 
     // Configurar visualização de imagens usando delegação de eventos
     console.log("🖼️ Configurando visualização de imagens com delegação...");

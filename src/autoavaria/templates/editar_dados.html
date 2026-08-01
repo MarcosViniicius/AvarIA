@@ -157,62 +157,60 @@ Avarias{% endblock %} {% block content %}
                         >
                           <i class="bi bi-pencil"></i>
                         </button>
-                        <div class="btn-group btn-group-sm" role="group">
-                          <button
-                            type="button"
-                            class="btn btn-outline-info dropdown-toggle"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
-                            title="Mover para outra tabela"
-                          >
-                            <i class="bi bi-arrow-left-right"></i>
-                          </button>
-                          <ul class="dropdown-menu">
-                            {% if sheet_name != 'Avarias' %}
-                            <li>
-                              <a
-                                class="dropdown-item mover-item"
-                                href="#"
-                                data-sheet-origem="{{ sheet_name }}"
-                                data-sheet-destino="Avarias"
-                                data-linha="{{ registro.id_linha }}"
-                              >
-                                <i
-                                  class="bi bi-exclamation-triangle text-danger me-1"
-                                ></i>
-                                Mover para Avarias
-                              </a>
-                            </li>
-                            {% endif %} {% if sheet_name != 'Uso Interno' %}
-                            <li>
-                              <a
-                                class="dropdown-item mover-item"
-                                href="#"
-                                data-sheet-origem="{{ sheet_name }}"
-                                data-sheet-destino="Uso Interno"
-                                data-linha="{{ registro.id_linha }}"
-                              >
-                                <i class="bi bi-building text-info me-1"></i>
-                                Mover para Uso Interno
-                              </a>
-                            </li>
-                            {% endif %} {% if sheet_name != 'Erros de Análise'
-                            %}
-                            <li>
-                              <a
-                                class="dropdown-item mover-item"
-                                href="#"
-                                data-sheet-origem="{{ sheet_name }}"
-                                data-sheet-destino="Erros de Análise"
-                                data-linha="{{ registro.id_linha }}"
-                              >
-                                <i class="bi bi-x-circle text-warning me-1"></i>
-                                Mover para Erros
-                              </a>
-                            </li>
-                            {% endif %}
-                          </ul>
-                        </div>
+                        <button
+                          type="button"
+                          class="btn btn-outline-info dropdown-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Mover para outra tabela"
+                        >
+                          <i class="bi bi-arrow-left-right"></i>
+                        </button>
+                        <ul class="dropdown-menu">
+                          {% if sheet_name != 'Avarias' %}
+                          <li>
+                            <a
+                              class="dropdown-item mover-item"
+                              href="#"
+                              data-sheet-origem="{{ sheet_name }}"
+                              data-sheet-destino="Avarias"
+                              data-linha="{{ registro.id_linha }}"
+                            >
+                              <i
+                                class="bi bi-exclamation-triangle text-danger me-1"
+                              ></i>
+                              Mover para Avarias
+                            </a>
+                          </li>
+                          {% endif %} {% if sheet_name != 'Uso Interno' %}
+                          <li>
+                            <a
+                              class="dropdown-item mover-item"
+                              href="#"
+                              data-sheet-origem="{{ sheet_name }}"
+                              data-sheet-destino="Uso Interno"
+                              data-linha="{{ registro.id_linha }}"
+                            >
+                              <i class="bi bi-building text-info me-1"></i>
+                              Mover para Uso Interno
+                            </a>
+                          </li>
+                          {% endif %} {% if sheet_name != 'Erros de Análise'
+                          %}
+                          <li>
+                            <a
+                              class="dropdown-item mover-item"
+                              href="#"
+                              data-sheet-origem="{{ sheet_name }}"
+                              data-sheet-destino="Erros de Análise"
+                              data-linha="{{ registro.id_linha }}"
+                            >
+                              <i class="bi bi-x-circle text-warning me-1"></i>
+                              Mover para Erros
+                            </a>
+                          </li>
+                          {% endif %}
+                        </ul>
                         <button
                           class="btn btn-outline-danger btn-excluir-linha"
                           data-sheet="{{ sheet_name }}"
@@ -238,7 +236,7 @@ Avarias{% endblock %} {% block content %}
 
 <!-- Modal de Edição -->
 <div class="modal fade" id="editModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">
@@ -251,6 +249,18 @@ Avarias{% endblock %} {% block content %}
         ></button>
       </div>
       <div class="modal-body">
+        <div class="mb-3 text-center" id="editImagePreviewContainer" style="display: none">
+          <img
+            id="editImagePreview"
+            src=""
+            alt="Imagem do produto"
+            class="img-fluid rounded border"
+            style="max-height: 480px; width: auto"
+          />
+        </div>
+        <div class="mb-3 text-center text-muted small" id="editImagePreviewVazio" style="display: none">
+          <i class="bi bi-image me-1"></i>Sem imagem associada a este item
+        </div>
         <div class="mb-3">
           <label class="form-label">Campo:</label>
           <input type="text" class="form-control" id="editFieldName" readonly />
@@ -291,6 +301,15 @@ Avarias{% endblock %} {% block content %}
         ></button>
       </div>
       <div class="modal-body">
+        <div class="mb-3 text-center" id="addModalImagePreviewContainer" style="display: none">
+          <img
+            id="addModalImagePreview"
+            src=""
+            alt="Imagem do produto"
+            class="img-fluid rounded border"
+            style="max-height: 480px; width: auto"
+          />
+        </div>
         <div id="addFormFields">
           <!-- Campos serão gerados dinamicamente -->
         </div>
@@ -404,8 +423,37 @@ Avarias{% endblock %} {% block content %}
     document.getElementById("editFieldName").value = fieldName;
     document.getElementById("editFieldValue").value = currentValue;
 
+    exibirImagemNoModal(
+      tr,
+      "editImagePreviewContainer",
+      "editImagePreview",
+      "editImagePreviewVazio"
+    );
+
     const modal = new bootstrap.Modal(document.getElementById("editModal"));
     modal.show();
+  }
+
+  // Mostra a imagem do produto (se houver) dentro de um modal de edição,
+  // reaproveitando o botão "Ver" já renderizado na linha da tabela.
+  function exibirImagemNoModal(row, containerId, imgId, vazioId) {
+    const container = document.getElementById(containerId);
+    const img = document.getElementById(imgId);
+    const vazio = vazioId ? document.getElementById(vazioId) : null;
+    if (!container || !img) return;
+
+    const botaoImagem = row ? row.querySelector(".view-image-btn") : null;
+    const imagePath = botaoImagem ? botaoImagem.getAttribute("data-image") : null;
+
+    if (imagePath) {
+      img.src = imagePath;
+      container.style.display = "block";
+      if (vazio) vazio.style.display = "none";
+    } else {
+      container.style.display = "none";
+      img.src = "";
+      if (vazio) vazio.style.display = "block";
+    }
   }
 
   // Salvar edição
@@ -612,11 +660,7 @@ Avarias{% endblock %} {% block content %}
         !header.includes("Ver Imagem") &&
         !header.includes("Caminho da Imagem")
       ) {
-        const isRequired = [
-          "Produto",
-          "Quantidade",
-          "Código de Barras",
-        ].includes(header);
+        const isRequired = ["Produto", "Arquivo"].includes(header);
         formHtml += `
         <div class="mb-3">
           <label class="form-label">
@@ -638,6 +682,10 @@ Avarias{% endblock %} {% block content %}
     });
 
     document.getElementById("addFormFields").innerHTML = formHtml;
+
+    // Nova linha ainda não tem imagem associada
+    const imagemContainer = document.getElementById("addModalImagePreviewContainer");
+    if (imagemContainer) imagemContainer.style.display = "none";
 
     const modal = new bootstrap.Modal(document.getElementById("addModal"));
     modal.show();
@@ -739,6 +787,9 @@ Avarias{% endblock %} {% block content %}
       '<i class="bi bi-plus-lg me-2"></i>Adicionar Nova Linha';
     saveBtn.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar';
     saveBtn.setAttribute("onclick", "salvarNovaLinha()");
+
+    const imagemContainer = document.getElementById("addModalImagePreviewContainer");
+    if (imagemContainer) imagemContainer.style.display = "none";
   }
 
   // Salvar nova linha
@@ -1043,12 +1094,7 @@ Avarias{% endblock %} {% block content %}
         !header.includes("Ver Imagem") &&
         !header.includes("Caminho da Imagem")
       ) {
-        const isRequired = [
-          "Produto",
-          "Quantidade",
-          "Código de Barras",
-          "Arquivo",
-        ].includes(header);
+        const isRequired = ["Produto", "Arquivo"].includes(header);
         const currentValue = currentData[header] || "";
 
         formHtml += `
@@ -1086,82 +1132,22 @@ Avarias{% endblock %} {% block content %}
     saveBtn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar Alterações';
     saveBtn.setAttribute("onclick", "salvarEdicaoCompleta()");
 
+    exibirImagemNoModal(row, "addModalImagePreviewContainer", "addModalImagePreview");
+
     const modal = new bootstrap.Modal(document.getElementById("addModal"));
     modal.show();
   }
 
-  // Configurar visualização de imagens usando delegação de eventos
-  console.log("🖼️ Configurando visualização de imagens com delegação...");
-
-  // Usar delegação de eventos no document para capturar cliques em botões dinâmicos
-  document.addEventListener("click", function (e) {
-    if (e.target.closest(".view-image-btn")) {
-      e.preventDefault();
-      const btn = e.target.closest(".view-image-btn");
-      console.log("🖱️ Botão clicado via delegação em editar_dados!");
-
-      const imagePath = btn.getAttribute("data-image");
-      console.log("🖼️ Caminho da imagem:", imagePath);
-
-      if (!imagePath || imagePath === "N/A" || imagePath === "-") {
-        alert("Imagem não disponível");
-        return;
-      }
-
-      // Verificar se modal existe
-      const imageModalEl = document.getElementById("imageModal");
-      if (!imageModalEl) {
-        alert("Modal de imagem não encontrado");
-        return;
-      }
-
-      const imageModal = new bootstrap.Modal(imageModalEl);
-      const modalImage = document.getElementById("modalImage");
-      const downloadBtn = document.getElementById("downloadImageBtn");
-      const imageLoadError = document.getElementById("imageLoadError");
-
-      // Extrair nome do arquivo da URL
-      const filename = imagePath.split("/").pop() || "Imagem";
-
-      // Atualizar modal
-      const titleEl = document.getElementById("imageModalLabel");
-      const filenameEl = document.getElementById("imageModalFilename");
-
-      if (titleEl) titleEl.textContent = "Visualizar Imagem";
-      if (filenameEl) filenameEl.textContent = filename;
-
-      // Configurar imagem
-      if (modalImage) {
-        modalImage.src = imagePath;
-        modalImage.alt = filename;
-        modalImage.onload = () => {
-          if (imageLoadError) imageLoadError.style.display = "none";
-        };
-        modalImage.onerror = () => {
-          if (imageLoadError) {
-            imageLoadError.style.display = "block";
-            imageLoadError.textContent = "Erro ao carregar a imagem";
-          }
-        };
-      }
-
-      // Configurar botão de download
-      if (downloadBtn) {
-        downloadBtn.onclick = () => {
-          const link = document.createElement("a");
-          link.href = imagePath;
-          link.download = filename;
-          link.click();
-        };
-      }
-
-      console.log("📱 Abrindo modal...");
-      imageModal.show();
-    }
-  });
+  // A visualização de imagem (clique em ".view-image-btn" -> abrir #imageModal)
+  // é tratada por static/js/relatorio.min.js (setupImageModalOptimizations),
+  // carregado no fim deste arquivo - a mesma função já usada por
+  // relatorio.html e historico_execucao.html. Antes havia uma cópia própria
+  // dessa lógica aqui, divergente das outras duas.
 </script>
 
-<!-- Modal de Visualização de Imagem -->
+<!-- Modal de Visualização de Imagem - marcação alinhada com
+     historico_execucao.html (mesmo modal e mesmo JS compartilhado,
+     ver static/js/relatorio.min.js, carregado no fim deste arquivo). -->
 <div
   class="modal fade"
   id="imageModal"
@@ -1182,20 +1168,20 @@ Avarias{% endblock %} {% block content %}
         ></button>
       </div>
       <div class="modal-body text-center">
-        <div
-          id="imageLoadError"
-          class="alert alert-warning"
-          style="display: none"
-        >
-          Erro ao carregar a imagem
+        <div id="imageLoading" class="d-none">
+          <div class="spinner-border text-primary" role="status"></div>
+          <p class="mt-2">Carregando imagem...</p>
         </div>
         <img
           id="modalImage"
           src=""
           alt="Imagem"
           class="img-fluid rounded shadow"
-          style="max-height: 70vh"
+          style="max-height: 70vh; display: none"
         />
+        <div id="imageLoadError" class="alert alert-warning d-none">
+          Erro ao carregar a imagem
+        </div>
       </div>
       <div class="modal-footer">
         <button
@@ -1205,12 +1191,14 @@ Avarias{% endblock %} {% block content %}
         >
           <i class="bi bi-x-circle"></i> Fechar
         </button>
-        <button type="button" class="btn btn-primary" id="downloadImageBtn">
+        <a id="downloadImageBtn" href="" download class="btn btn-primary">
           <i class="bi bi-download"></i> Download
-        </button>
+        </a>
       </div>
     </div>
   </div>
 </div>
 
+{% endblock %} {% block scripts %}
+<script src="{{ url_for('static', filename='js/relatorio.min.js') }}" defer></script>
 {% endblock %}

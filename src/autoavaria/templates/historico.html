@@ -1,0 +1,281 @@
+{% extends "base.html" %} {% block title %}Histórico - Analisador de Avarias{%
+endblock %} {% block content %}
+<div class="row">
+  <div class="col-12 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h1 class="h2 mb-1">
+          <i class="bi bi-clock-history text-primary me-2"></i>Histórico de Relatórios
+        </h1>
+        <p class="text-muted">
+          Execuções de processamento e relatórios unificados gerados ao longo do tempo
+        </p>
+      </div>
+      <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-outline-primary">
+        <i class="bi bi-file-earmark-excel"></i> Relatório Atual
+      </a>
+    </div>
+  </div>
+
+  <!-- Resumo Geral -->
+  <div class="col-12 mb-4">
+    <div class="row">
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-play-circle text-primary"></i></div>
+            <h3 class="mb-1">{{ resumo.totais.total_execucoes }}</h3>
+            <h6 class="text-muted small mb-0">Execuções</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-exclamation-triangle text-danger"></i></div>
+            <h3 class="mb-1">{{ resumo.totais.total_avarias }}</h3>
+            <h6 class="text-muted small mb-0">Avarias</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-building text-info"></i></div>
+            <h3 class="mb-1">{{ resumo.totais.total_uso_interno }}</h3>
+            <h6 class="text-muted small mb-0">Uso Interno</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-x-circle text-warning"></i></div>
+            <h3 class="mb-1">{{ resumo.totais.total_erros }}</h3>
+            <h6 class="text-muted small mb-0">Erros</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-coin text-success"></i></div>
+            <h3 class="mb-1">{{ "{:,}".format(resumo.totais.total_tokens) }}</h3>
+            <h6 class="text-muted small mb-0">Tokens (IA)</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-funnel text-primary"></i></div>
+            <h3 class="mb-1">{{ resumo.total_relatorios_unificados }}</h3>
+            <h6 class="text-muted small mb-0">Unificados</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-2 col-sm-4 mb-3">
+        <div class="card border-0 shadow-sm h-100 text-center">
+          <div class="card-body">
+            <div class="display-6 mb-2"><i class="bi bi-speedometer2 text-danger"></i></div>
+            <h3 class="mb-1">{{ "%.1f"|format(resumo.totais.peso_total_avarias_kg) }} kg</h3>
+            <h6 class="text-muted small mb-0">Peso Total em Avarias</h6>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Resumo por mês -->
+    {% if resumo.por_mes %}
+    <div class="col-lg-8 mb-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-transparent">
+          <h5 class="mb-0"><i class="bi bi-calendar3 me-2"></i>Resumo por Mês</h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Mês</th>
+                  <th class="text-center">Execuções</th>
+                  <th class="text-center">Avarias</th>
+                  <th class="text-center">Uso Interno</th>
+                  <th class="text-center">Erros</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in resumo.por_mes %}
+                <tr>
+                  <td>{{ m.mes }}</td>
+                  <td class="text-center">{{ m.execucoes }}</td>
+                  <td class="text-center">{{ m.avarias }}</td>
+                  <td class="text-center">{{ m.uso_interno }}</td>
+                  <td class="text-center">{{ m.erros }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Produtos com mais avarias -->
+    {% if resumo.top_produtos_avaria %}
+    <div class="col-lg-4 mb-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-transparent">
+          <h5 class="mb-0"><i class="bi bi-trophy me-2"></i>Produtos com Mais Avaria</h5>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <tbody>
+              {% for p in resumo.top_produtos_avaria %}
+              <tr>
+                <td>{{ p.produto }}</td>
+                <td class="text-end"><span class="badge bg-danger">{{ p.ocorrencias }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Execuções de processamento -->
+  <div class="col-12 mb-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Execuções de Processamento</h5>
+      </div>
+      <div class="card-body p-0">
+        {% if execucoes %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Início</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th class="text-center">Imagens</th>
+                <th class="text-center">Avarias</th>
+                <th class="text-center">Uso Interno</th>
+                <th class="text-center">Erros</th>
+                <th class="text-center">Tokens</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for run in execucoes %}
+              <tr>
+                <td>{{ run.iniciado_em }}</td>
+                <td>
+                  {% if run.tipo == 'reanalise' %}
+                    <span class="badge bg-info-subtle text-info-emphasis">Reanálise</span>
+                  {% else %}
+                    <span class="badge bg-primary-subtle text-primary-emphasis">Processamento</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if run.status == 'concluido' %}
+                    <span class="badge bg-success">Concluído</span>
+                  {% elif run.status == 'em_andamento' %}
+                    <span class="badge bg-primary">Em andamento</span>
+                  {% elif run.status == 'cancelado' %}
+                    <span class="badge bg-secondary">Cancelado</span>
+                  {% else %}
+                    <span class="badge bg-danger" title="{{ run.mensagem }}">Erro</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">{{ run.imagens_total }}</td>
+                <td class="text-center">{{ run.avarias }}</td>
+                <td class="text-center">{{ run.uso_interno }}</td>
+                <td class="text-center">{{ run.erros }}</td>
+                <td class="text-center">{{ "{:,}".format(run.tokens_consumidos) }}</td>
+                <td class="text-end">
+                  <a href="{{ url_for('historico_execucao', run_id=run.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-eye"></i> Ver
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-inbox display-4 d-block mb-2"></i>
+          Nenhuma execução de processamento registrada ainda.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Relatórios unificados -->
+  <div class="col-12 mb-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent">
+        <h5 class="mb-0"><i class="bi bi-funnel me-2"></i>Relatórios Unificados Gerados</h5>
+      </div>
+      <div class="card-body p-0">
+        {% if relatorios_unificados %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Gerado em</th>
+                <th>Arquivos</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rel in relatorios_unificados %}
+              <tr>
+                <td>{{ rel.criado_em }}</td>
+                <td>
+                  {% if rel.arquivo_xlsx %}
+                  <span class="badge bg-success-subtle text-success-emphasis me-1">
+                    <i class="bi bi-file-earmark-excel"></i> Excel
+                  </span>
+                  {% endif %}
+                  {% if rel.arquivo_txt %}
+                  <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                    <i class="bi bi-file-earmark-text"></i> TXT
+                  </span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  {% if rel.arquivo_xlsx %}
+                  <a href="{{ url_for('download_relatorio_unificado', filename=rel.arquivo_xlsx) }}" class="btn btn-sm btn-outline-success me-1">
+                    <i class="bi bi-download"></i> Excel
+                  </a>
+                  {% endif %}
+                  {% if rel.arquivo_txt %}
+                  <a href="{{ url_for('download_relatorio_unificado', filename=rel.arquivo_txt) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-download"></i> TXT
+                  </a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-inbox display-4 d-block mb-2"></i>
+          Nenhum relatório unificado gerado ainda. Use o botão "Unificar Relatório" na tela de Relatório.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

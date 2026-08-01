@@ -1,3 +1,5 @@
+
+
 # Dependências do Analisador de Avarias - Interface Web
 
 # Framework Web
@@ -11,8 +13,16 @@ openpyxl>=3.1.2
 # Manipulação de imagens
 Pillow>=10.4.0
 
-# Google Gemini AI
-google-generativeai>=0.4.0
+# Leitura de código de barras (modo de extração "sem IA" / "híbrido") - sem
+# modelo de IA, sem rede, só processamento de imagem local.
+opencv-python-headless>=4.9.0
+zxing-cpp>=2.2.0
+
+# Provedores de IA (análise de imagens)
+# google-generativeai foi descontinuado pelo Google em favor de google-genai
+google-genai>=1.0.0
+openai>=1.50.0
+anthropic>=0.35.0
 
 # Barra de progresso
 tqdm==4.66.1

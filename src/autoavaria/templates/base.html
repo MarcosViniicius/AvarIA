@@ -24,31 +24,36 @@
       rel="stylesheet"
     />
     <link
-      href="{{ url_for('static', filename='css/style.min.css') }}"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="{{ url_for('static', filename='css/style.min.css') }}?v=4.0"
       rel="stylesheet"
     />
 
     <!-- CSS crítico inline para LCP -->
     <style>
       body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        font-family: "Inter", sans-serif;
+        background: #000000;
+        color: #ffffff;
         min-height: 100vh;
       }
-      .navbar-brand {
-        font-weight: 700;
-        font-size: 1.5rem;
+      .navbar {
+        background: #1a1a1a !important;
       }
       .card {
-        border: 0;
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        transition: all 0.3s ease;
-        border-radius: 0.75rem;
+        border-radius: 16px;
+        background: #1a1a1a;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
       }
       .btn {
-        border-radius: 0.5rem;
-        font-weight: 500;
-        transition: all 0.3s ease;
+        border-radius: 12px;
+        transition: all 0.25s ease;
+      }
+      .btn:hover {
+        transform: scale(1.02);
       }
       .loading-spinner {
         display: inline-block;
@@ -116,6 +121,14 @@
             </li>
             <li class="nav-item">
               <a
+                class="nav-link {% if request.endpoint == 'historico' %}active{% endif %}"
+                href="{{ url_for('historico') }}"
+              >
+                <i class="bi bi-clock-history me-1"></i>Histórico
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
                 class="nav-link {% if request.endpoint == 'visualizar_logs' %}active{% endif %}"
                 href="{{ url_for('visualizar_logs') }}"
               >
@@ -155,13 +168,34 @@
     </div>
     {% endif %} {% endwith %}
 
+    <!-- Aviso de chave de API ausente - avisa ANTES do usuário tentar
+         processar e descobrir no meio do caminho. Passado pelas rotas que
+         fazem sentido mostrar (Dashboard, Upload); páginas que não passam
+         essa variável simplesmente não mostram nada. -->
+    {% if chave_api_ausente %}
+    <div class="container mt-3">
+      <div class="alert alert-warning d-flex align-items-center" role="alert">
+        <i class="bi bi-key-fill fs-4 me-3"></i>
+        <div class="flex-grow-1">
+          <strong>Nenhuma chave de API configurada.</strong>
+          O processamento por IA não vai funcionar até você configurar uma -
+          ou use o <strong>modo "Sem IA"</strong> (leitura de código de
+          barras, sem custo e sem precisar de chave nenhuma).
+        </div>
+        <a href="{{ url_for('configuracoes') }}" class="btn btn-sm btn-outline-dark ms-3">
+          Configurar
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Main Content -->
     <main class="container my-4">{% block content %}{% endblock %}</main>
 
     <!-- Footer -->
-    <footer class="bg-light text-center py-3 mt-5">
+    <footer class="text-center py-3 mt-5" style="background: #1A1A1A; border-top: 1px solid rgba(0, 208, 132, 0.1);">
       <div class="container">
-        <small class="text-muted">
+        <small style="color: #A0A0A0;">
           © 2025 Analisador de Avarias - Sistema de Análise Inteligente de
           Produtos
         </small>
