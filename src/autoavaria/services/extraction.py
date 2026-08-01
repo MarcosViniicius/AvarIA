@@ -38,7 +38,7 @@ def _hash_arquivo(caminho) -> str:
         return _hash(f.read())
 
 
-def nome_para_gravar(pastas, nome: str, dados: bytes) -> Optional[str]:
+def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> Optional[str]:
     """Decide o nome com que gravar `dados` (conteúdo do arquivo) em
     `pastas[0]` (a primeira pasta é sempre onde o arquivo será gravado; as
     demais entram só como pastas adicionais a checar por colisão de nome).
@@ -61,6 +61,11 @@ def nome_para_gravar(pastas, nome: str, dados: bytes) -> Optional[str]:
     - Colisão com conteúdo DIFERENTE: devolve um nome com sufixo numérico,
       preservando os arquivos sem sobrescrever nada.
 
+    `forcar=True` desativa a checagem de "mesmo conteúdo" - toda colisão de
+    nome ganha sufixo, mesmo que o conteúdo já exista. Usado pelo checkbox
+    "Forçar reprocessamento" da tela de Upload, para quando o usuário quer
+    reanalisar de propósito um lote já enviado antes.
+
     Usado tanto no upload direto (routes/upload.py) quanto na extração de
     arquivos compactados abaixo.
     """
@@ -75,7 +80,7 @@ def nome_para_gravar(pastas, nome: str, dados: bytes) -> Optional[str]:
             caminho = pasta / candidato_nome
             if not caminho.exists():
                 continue
-            if _hash_arquivo(caminho) == _hash(dados):
+            if not forcar and _hash_arquivo(caminho) == _hash(dados):
                 return None
             colide_com_conteudo_diferente = True
 
