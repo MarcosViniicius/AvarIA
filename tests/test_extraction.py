@@ -229,6 +229,43 @@ class TestExtracaoConsideraPastaDeArquivo:
         assert (destino / "IMG-1.jpg").read_text() == "conteudo"
 
 
+class TestExtracaoComForcar:
+    """`forcar=True` é o que faz reenviar o MESMO .zip de propósito (para
+    reanalisar) funcionar - sem isso, o conteúdo idêntico já arquivado faz a
+    extração não gravar nada, e o pipeline não acha imagem nova pra processar."""
+
+    def test_reextrair_zip_identico_com_forcar_grava_copia_nova(self, tmp_path):
+        origem = tmp_path / "origem"
+        destino = tmp_path / "destino"
+        origem.mkdir()
+        destino.mkdir()
+        _criar_zip(origem / "lote.zip", {"IMG-1.jpg": "mesma foto"})
+
+        extrator = ExtratorArquivos(pasta_origem=str(origem), pasta_destino=str(destino), forcar=True)
+        extrator.extrair_arquivo(origem / "lote.zip", criar_subpasta=False)
+        # reenvio de propósito, mesmo conteúdo
+        _criar_zip(origem / "lote.zip", {"IMG-1.jpg": "mesma foto"})
+        extrator.extrair_arquivo(origem / "lote.zip", criar_subpasta=False)
+
+        arquivos = sorted(p.name for p in destino.iterdir())
+        assert arquivos == ["IMG-1.jpg", "IMG-1_2.jpg"]
+
+    def test_sem_forcar_continua_nao_duplicando(self, tmp_path):
+        """Regressão: o comportamento padrão (forcar=False, o default) não pode mudar."""
+        origem = tmp_path / "origem"
+        destino = tmp_path / "destino"
+        origem.mkdir()
+        destino.mkdir()
+        _criar_zip(origem / "lote.zip", {"IMG-1.jpg": "mesma foto"})
+
+        extrator = ExtratorArquivos(pasta_origem=str(origem), pasta_destino=str(destino))
+        extrator.extrair_arquivo(origem / "lote.zip", criar_subpasta=False)
+        _criar_zip(origem / "lote.zip", {"IMG-1.jpg": "mesma foto"})
+        extrator.extrair_arquivo(origem / "lote.zip", criar_subpasta=False)
+
+        assert sorted(p.name for p in destino.iterdir()) == ["IMG-1.jpg"]
+
+
 class TestExtracaoTarNaoSobrescreve:
     def test_reextrair_o_mesmo_tar_nao_sobrescreve(self, tmp_path):
         origem = tmp_path / "origem"

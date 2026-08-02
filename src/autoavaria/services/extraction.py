@@ -91,7 +91,7 @@ def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> O
         contador += 1
 
 
-def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_arquivo=None) -> None:
+def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_arquivo=None, forcar: bool = False) -> None:
     """Grava um membro de arquivo compactado em `pasta_destino`, usando
     `nome_para_gravar` para nunca sobrescrever um arquivo diferente, e nunca
     duplicar um arquivo idêntico. `dados_origem` é um file-like aberto para
@@ -109,7 +109,7 @@ def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_ar
     with dados_origem as entrada:
         dados = entrada.read()
     pastas_colisao = [pasta_membro, pasta_arquivo] if pasta_arquivo else [pasta_membro]
-    nome_final = nome_para_gravar(pastas_colisao, caminho_relativo.name, dados)
+    nome_final = nome_para_gravar(pastas_colisao, caminho_relativo.name, dados, forcar=forcar)
     if nome_final is None:
         return  # conteúdo idêntico já extraído antes - não duplicar
     with open(pasta_membro / nome_final, "wb") as saida:
@@ -117,7 +117,7 @@ def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_ar
 
 
 class ExtratorArquivos:
-    def __init__(self, pasta_origem="imagens_para_analisar", pasta_destino=None, pasta_arquivo=None):
+    def __init__(self, pasta_origem="imagens_para_analisar", pasta_destino=None, pasta_arquivo=None, forcar=False):
         """
         Inicializa o extrator de arquivos.
 
@@ -128,10 +128,15 @@ class ExtratorArquivos:
                 verificada também na hora de decidir colisão de nome (ver
                 `_extrair_membro`). Opcional - sem ela, só a pasta de destino
                 é considerada (comportamento anterior, usado nos testes).
+            forcar (bool): Se True, ignora a checagem de conteúdo idêntico -
+                toda colisão de nome ganha sufixo numérico (ver
+                `nome_para_gravar`). Usado para reprocessar de propósito um
+                lote já enviado antes.
         """
         self.pasta_origem = Path(pasta_origem)
         self.pasta_destino = Path(pasta_destino) if pasta_destino else self.pasta_origem
         self.pasta_arquivo = Path(pasta_arquivo) if pasta_arquivo else None
+        self.forcar = forcar
 
         # Formatos suportados e suas respectivas funções de extração
         self.formatos_suportados = {
@@ -174,7 +179,7 @@ class ExtratorArquivos:
                 for info in zip_ref.infolist():
                     if info.is_dir():
                         continue
-                    _extrair_membro(zip_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo)
+                    _extrair_membro(zip_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair ZIP {arquivo}: {e}")
@@ -190,7 +195,7 @@ class ExtratorArquivos:
                 for info in rar_ref.infolist():
                     if info.is_dir():
                         continue
-                    _extrair_membro(rar_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo)
+                    _extrair_membro(rar_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair RAR {arquivo}: {e}")
@@ -204,7 +209,7 @@ class ExtratorArquivos:
         try:
             with py7zr.SevenZipFile(arquivo, mode="r") as z:
                 for nome_membro, stream in z.readall().items():
-                    _extrair_membro(stream, nome_membro, pasta_destino, self.pasta_arquivo)
+                    _extrair_membro(stream, nome_membro, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair 7Z {arquivo}: {e}")
@@ -231,7 +236,7 @@ class ExtratorArquivos:
                     origem = tar_ref.extractfile(membro)
                     if origem is None:
                         continue
-                    _extrair_membro(origem, membro.name, pasta_destino, self.pasta_arquivo)
+                    _extrair_membro(origem, membro.name, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair TAR ({modo}) {arquivo}: {e}")
@@ -242,7 +247,7 @@ class ExtratorArquivos:
         try:
             nome_arquivo = Path(arquivo).stem
             with gzip.open(arquivo, "rb") as f_in:
-                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo)
+                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair GZ {arquivo}: {e}")
@@ -255,7 +260,7 @@ class ExtratorArquivos:
 
             nome_arquivo = Path(arquivo).stem
             with bz2.open(arquivo, "rb") as f_in:
-                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo)
+                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair BZ2 {arquivo}: {e}")
