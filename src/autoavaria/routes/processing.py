@@ -50,19 +50,23 @@ def allowed_file(filename):
     return extension in ALLOWED_EXTENSIONS
 
 
-def extrair_arquivos_comprimidos(pasta_imagens, logs_callback=None):
+def extrair_arquivos_comprimidos(pasta_imagens, logs_callback=None, forcar=False):
     """
     Extrai arquivos comprimidos da pasta de imagens.
 
     Args:
         pasta_imagens (str): Caminho para a pasta de imagens
         logs_callback (function): Função callback para adicionar logs
+        forcar (bool): Se True, ignora o dedup por conteúdo - toda imagem
+            colidindo com uma já existente (mesmo idêntica) ganha um nome
+            novo em vez de ser descartada. Usado pelo "Forçar reprocessamento"
+            da tela de Upload.
 
     Returns:
         dict: Resultados da extração
     """
     try:
-        extrator = ExtratorArquivos(pasta_origem=pasta_imagens, pasta_arquivo=ARCHIVE_FOLDER)
+        extrator = ExtratorArquivos(pasta_origem=pasta_imagens, pasta_arquivo=ARCHIVE_FOLDER, forcar=forcar)
         arquivos_comprimidos = extrator.listar_arquivos_comprimidos()
 
         if not arquivos_comprimidos:
@@ -404,6 +408,14 @@ def iniciar_processamento():
     if not os.path.exists(DIRETORIO_IMAGENS):
         return jsonify({"success": False, "message": "Pasta de imagens não encontrada"})
 
+    # Modo de extração escolhido pelo usuário na tela de processamento (IA,
+    # sem IA ou híbrido). Se omitido, processar_em_background usa o padrão
+    # salvo em config/config.json. Lido uma única vez aqui e reaproveitado
+    # abaixo para não chamar request.get_json() duas vezes.
+    dados_requisicao = request.get_json(silent=True) or {}
+    modo_extracao = dados_requisicao.get("modo_extracao")
+    forcar_reprocessamento = bool(dados_requisicao.get("forcar_reprocessamento", False))
+
     # Tentar extrair arquivos comprimidos antes de verificar imagens - precisa
     # ser síncrono aqui para a checagem de "há imagens" logo abaixo enxergar
     # o conteúdo já extraído. O resultado é repassado para a thread de
@@ -411,7 +423,7 @@ def iniciar_processamento():
     # novo - ver docstring de processar_em_background.
     resultado_extracao = None
     try:
-        resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS)
+        resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS, forcar=forcar_reprocessamento)
         if resultado_extracao["arquivos_extraidos"] > 0:
             print(f"✅ Extraídos {resultado_extracao['arquivos_extraidos']} arquivos comprimidos")
     except Exception as e:
@@ -425,12 +437,6 @@ def iniciar_processamento():
         return jsonify(
             {"success": False, "message": "Nenhuma imagem encontrada para processar"}
         )
-
-    # Modo de extração escolhido pelo usuário na tela de processamento (IA,
-    # sem IA ou híbrido). Se omitido, processar_em_background usa o padrão
-    # salvo em config/config.json.
-    dados_requisicao = request.get_json(silent=True) or {}
-    modo_extracao = dados_requisicao.get("modo_extracao")
 
     # Iniciar processamento em background
     thread = threading.Thread(

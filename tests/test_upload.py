@@ -114,3 +114,30 @@ class TestUploadFilesRota:
         assert corpo["files"] == []
         assert corpo["ignorados_duplicados"] == ["IMG-1.jpg"]
         assert list(tmp_path.iterdir()) == []  # nada salvo em UPLOAD_FOLDER
+
+
+class TestUploadFilesComForcar:
+    def test_forcar_grava_mesmo_com_conteudo_identico(self, client, tmp_path):
+        (tmp_path / "IMG-1.jpg").write_bytes(b"mesma foto")
+
+        data = {
+            "files": (io.BytesIO(b"mesma foto"), "IMG-1.jpg"),
+            "forcar_reprocessamento": "true",
+        }
+        resposta = client.post("/upload_files", data=data, content_type="multipart/form-data")
+        corpo = resposta.get_json()
+
+        assert corpo["success"] is True
+        assert corpo["files"] == ["IMG-1_2.jpg"]
+        assert corpo["ignorados_duplicados"] == []
+
+    def test_sem_forcar_continua_ignorando_duplicados(self, client, tmp_path):
+        """Regressão: sem marcar o checkbox, nada muda."""
+        (tmp_path / "IMG-1.jpg").write_bytes(b"mesma foto")
+
+        data = {"files": (io.BytesIO(b"mesma foto"), "IMG-1.jpg")}
+        resposta = client.post("/upload_files", data=data, content_type="multipart/form-data")
+        corpo = resposta.get_json()
+
+        assert corpo["files"] == []
+        assert corpo["ignorados_duplicados"] == ["IMG-1.jpg"]

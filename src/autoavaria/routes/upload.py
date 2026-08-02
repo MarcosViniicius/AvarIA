@@ -34,6 +34,8 @@ def upload_files():
         upload_dir = UPLOAD_FOLDER
         os.makedirs(upload_dir, exist_ok=True)
 
+        forcar = request.form.get("forcar_reprocessamento") == "true"
+
         uploaded_files = []
         renomeados = []
         ignorados_duplicados = []
@@ -41,7 +43,7 @@ def upload_files():
             if file and allowed_file(file.filename):
                 filename_original = secure_filename(file.filename)
                 dados = file.read()
-                filename = nome_para_gravar([upload_dir, ARCHIVE_FOLDER], filename_original, dados)
+                filename = nome_para_gravar([upload_dir, ARCHIVE_FOLDER], filename_original, dados, forcar=forcar)
 
                 if filename is None:
                     # Conteúdo idêntico a um arquivo já existente - reenviar o

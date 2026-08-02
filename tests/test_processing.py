@@ -77,7 +77,7 @@ class TestExtracaoNaoRepeteNoBackground:
 
         chamadas = []
 
-        def fake_extrair(pasta, callback=None):
+        def fake_extrair(pasta, callback=None, forcar=False):
             chamadas.append(pasta)
             return {"arquivos_encontrados": 0, "arquivos_extraidos": 0, "detalhes": {}}
 
@@ -105,3 +105,40 @@ class TestExtracaoNaoRepeteNoBackground:
         assert len(chamadas) == 1
         assert capturado["target"] is processing_route.processar_em_background
         assert capturado["args"][1] == {"arquivos_encontrados": 0, "arquivos_extraidos": 0, "detalhes": {}}
+
+
+class TestProcessarComForcar:
+    def test_forcar_reprocessamento_e_repassado_para_extracao(self, monkeypatch, tmp_path):
+        """Não testamos a extração real aqui (já coberta em test_extraction.py) -
+        só que o parâmetro do request chega até extrair_arquivos_comprimidos."""
+        from autoavaria import create_app
+
+        pasta_imagens = tmp_path / "imagens"
+        pasta_imagens.mkdir()
+        (pasta_imagens / "IMG-1.jpg").write_bytes(b"x")
+
+        app = create_app()
+        app.config["TESTING"] = True
+        monkeypatch.setattr(processing_route, "DIRETORIO_IMAGENS", str(pasta_imagens))
+
+        chamadas = {}
+
+        def fake_extrair(pasta_imagens, logs_callback=None, forcar=False):
+            chamadas["forcar"] = forcar
+            return {"arquivos_encontrados": 0, "arquivos_extraidos": 0, "detalhes": {}}
+
+        monkeypatch.setattr(processing_route, "extrair_arquivos_comprimidos", fake_extrair)
+
+        class ThreadFalsa:
+            def __init__(self, target=None, args=()):
+                pass
+
+            def start(self):
+                pass
+
+        monkeypatch.setattr(processing_route.threading, "Thread", ThreadFalsa)
+
+        client = app.test_client()
+        client.post("/processar", json={"forcar_reprocessamento": True})
+
+        assert chamadas["forcar"] is True
