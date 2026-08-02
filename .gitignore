@@ -137,11 +137,13 @@ Relatorio_Backup_*.xlsx
 # DESENVOLVIMENTO & TESTES
 # ============================================
 
-# Arquivos de teste
-test_*.py
-teste_*.py
-debug_*.py
-temp_*.py
+# Scripts de teste avulsos na raiz do projeto (NÃO a suíte de tests/ - sem
+# a barra inicial, esses padrões batiam em qualquer tests/test_*.py também e
+# apagavam a suíte inteira do controle de versão silenciosamente).
+/test_*.py
+/teste_*.py
+/debug_*.py
+/temp_*.py
 debug.html
 test.html
 
