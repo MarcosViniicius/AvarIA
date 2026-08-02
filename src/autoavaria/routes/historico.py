@@ -267,12 +267,17 @@ def historico_reanalisar(run_id):
             from ..services.extraction_pipeline import reanalisar_execucao
 
             resultado = reanalisar_execucao(run_id, callback_progresso=callback_progresso)
-            app_state.progresso_atual["progresso"] = 100
-            app_state.progresso_atual["status"] = "Reanálise concluída"
             app_state.progresso_atual["resultado"] = resultado
-            app_state.progresso_atual["logs"].append(
-                f"✅ Reanálise concluída: nova versão #{resultado.get('run_id')}"
-            )
+            if resultado.get("sucesso"):
+                app_state.progresso_atual["status"] = "Reanálise concluída"
+                app_state.progresso_atual["logs"].append(
+                    f"✅ Reanálise concluída: nova versão #{resultado.get('run_id')}"
+                )
+            else:
+                app_state.progresso_atual["status"] = f"Erro na reanálise: {resultado.get('erro')}"
+                app_state.progresso_atual["logs"].append(f"❌ Erro: {resultado.get('erro')}")
+                app_state.progresso_atual["erro"] = resultado.get("erro")
+            app_state.progresso_atual["progresso"] = 100
         except Exception as e:
             app_state.progresso_atual["status"] = f"Erro na reanálise: {e}"
             app_state.progresso_atual["logs"].append(f"❌ Erro: {e}")

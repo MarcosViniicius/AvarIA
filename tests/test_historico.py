@@ -68,3 +68,28 @@ class TestHistoricoReanalisar:
 
         time.sleep(0.2)  # dá tempo da thread de background rodar
         assert chamadas["run_id"] == run_id
+
+
+class TestHistoricoExecucaoBotaoReanalisar:
+    """Contrato entre a rota (Tarefa 8) e a UI (Tarefa 9): só a versão mais
+    recente de uma linhagem deve receber o botão "Reanalisar" - a página de
+    uma versão antiga deve escondê-lo (ver `eh_versao_mais_recente` em
+    routes/historico.py e o `{% if eh_versao_mais_recente %}` no template)."""
+
+    def test_versao_antiga_nao_mostra_botao_reanalisar_e_versao_nova_mostra(self, client, tmp_db):
+        run_id = tmp_db.iniciar_execucao("processamento")
+        tmp_db.finalizar_execucao(run_id, "concluido")
+        nova_versao_id = tmp_db.iniciar_reanalise_de_execucao(run_id)
+        tmp_db.finalizar_execucao(nova_versao_id, "concluido")
+
+        # Busca o atributo `id="btnReanalisar"` do <button> em si, não a
+        # string "btnReanalisar" pura - ela também aparece dentro do
+        # <script> (ex.: `getElementById("btnReanalisar")`), que é renderizado
+        # em toda página independente de `eh_versao_mais_recente`.
+        resposta_antiga = client.get(f"/historico/execucao/{run_id}")
+        assert resposta_antiga.status_code == 200
+        assert b'id="btnReanalisar"' not in resposta_antiga.data
+
+        resposta_nova = client.get(f"/historico/execucao/{nova_versao_id}")
+        assert resposta_nova.status_code == 200
+        assert b'id="btnReanalisar"' in resposta_nova.data

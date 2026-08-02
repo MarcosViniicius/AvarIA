@@ -185,7 +185,7 @@ def executar_processamento_principal(modo_extracao=None):
         return False
 
 
-def processar_em_background(modo_extracao=None, resultado_extracao_previo=None):
+def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, forcar=False):
     """Executa o processamento em background.
 
     `resultado_extracao_previo`: resultado já calculado por
@@ -196,6 +196,12 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None):
     clica em "Processar" - sem isso, cada zip era lido e (re)extraído duas
     vezes seguidas (a segunda não duplicava imagem por causa da checagem de
     conteúdo em `nome_para_gravar`, mas desperdiçava tempo e poluía o log).
+
+    `forcar`: repassado para o fallback de `extrair_arquivos_comprimidos`
+    abaixo (quando `resultado_extracao_previo` é None, ou seja, a extração
+    síncrona em `iniciar_processamento()` falhou) - garante que a escolha do
+    usuário no "Forçar reprocessamento" não seja perdida nesse caminho de
+    retry.
     """
     try:
         app_state.processamento_ativo = True
@@ -275,7 +281,7 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None):
             else:
                 adicionar_log("📦 Nenhum arquivo comprimido encontrado")
         else:
-            resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS, adicionar_log)
+            resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS, adicionar_log, forcar=forcar)
 
         if resultado_extracao["arquivos_encontrados"] > 0:
             app_state.progresso_atual["status"] = "📦 Extração de arquivos concluída"
@@ -440,7 +446,7 @@ def iniciar_processamento():
 
     # Iniciar processamento em background
     thread = threading.Thread(
-        target=processar_em_background, args=(modo_extracao, resultado_extracao)
+        target=processar_em_background, args=(modo_extracao, resultado_extracao, forcar_reprocessamento)
     )
     thread.start()
 

@@ -30,7 +30,12 @@ from . import ai_extraction, catalogo, conversa, db, image_archive
 from .ai import construir_provedor_de_config, obter_api_key_do_provedor
 from .excel_report import salvar_relatorio_excel
 from .extraction_engines import MODO_IA, MODO_SEM_IA, MODOS_DISPONIVEIS, construir_motor
-from .report_editing import carregar_todas_sheets, remover_linhas_por_caminho_imagem, salvar_todas_sheets
+from .report_editing import (
+    carregar_todas_sheets,
+    fazer_backup,
+    remover_linhas_por_caminho_imagem,
+    salvar_todas_sheets,
+)
 from .reports import criar_gerenciador
 
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
@@ -658,6 +663,7 @@ def reanalisar_execucao(
         # Só remove as linhas antigas do Excel DEPOIS de ter os novos
         # resultados prontos (nem que seja tudo erro) - uma queda no meio do
         # processo nunca deixa o relatório sem as linhas de uma versão válida.
+        fazer_backup(arquivo_excel)
         sheets_atuais = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
         sheets_sem_antigas = remover_linhas_por_caminho_imagem(sheets_atuais, caminhos_originais)
         if sheets_sem_antigas:

@@ -52,7 +52,7 @@ class TestExtracaoNaoRepeteNoBackground:
         extração."""
         chamadas = []
 
-        def fake_extrair(pasta, callback=None):
+        def fake_extrair(pasta, callback=None, forcar=False):
             chamadas.append(pasta)
             return {"arquivos_encontrados": 0, "arquivos_extraidos": 0, "detalhes": {}}
 

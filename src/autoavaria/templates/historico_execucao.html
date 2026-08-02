@@ -794,7 +794,9 @@ Histórico{% endblock %} {% block head %}
       fetch("/status")
         .then((r) => r.json())
         .then((data) => {
-          const terminou = data.progresso >= 100 || (data.status || "").includes("Erro");
+          const terminou =
+            (data.resultado && typeof data.resultado.run_id !== "undefined") ||
+            (data.status || "").includes("Erro");
           if (!terminou) return;
           clearInterval(intervalo);
           const novoRunId = data.resultado && data.resultado.run_id;
