@@ -34,6 +34,16 @@ Histórico{% endblock %} {% block head %}
         <a href="{{ url_for('historico') }}" class="btn btn-outline-secondary me-2">
           <i class="bi bi-arrow-left"></i> Voltar
         </a>
+        {% if eh_versao_mais_recente %}
+        <button
+          class="btn btn-outline-warning me-2"
+          id="btnReanalisar"
+          onclick="iniciarReanalise()"
+          title="Roda a análise de novo em todas as imagens desta execução, criando uma nova versão"
+        >
+          <i class="bi bi-arrow-clockwise"></i> Reanalisar
+        </button>
+        {% endif %}
         <button class="btn btn-warning me-2" onclick="abrirModalUnificacao()" title="Unificar itens desta execução">
           <i class="bi bi-funnel"></i> Unificar
         </button>
@@ -56,6 +66,24 @@ Histórico{% endblock %} {% block head %}
     </div>
     {% endif %}
   </div>
+
+  {% if versoes|length > 1 %}
+  <div class="col-12 mb-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2">
+        <strong class="me-2"><i class="bi bi-clock-history me-1"></i>Versões desta análise:</strong>
+        {% for versao in versoes %}
+        <a
+          href="{{ url_for('historico_execucao', run_id=versao.id) }}"
+          class="badge text-decoration-none me-1 {{ 'bg-primary' if versao.id == execucao.id else 'bg-secondary' }}"
+        >
+          Versão {{ versao.versao }} — {{ versao.iniciado_em }}{% if loop.last %} (mais recente){% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Resumo dos Dados -->
   {% if dados %}
@@ -725,6 +753,57 @@ Histórico{% endblock %} {% block head %}
         document.getElementById("unificacaoErro").classList.remove("d-none");
         document.getElementById("unificacaoErroMensagem").textContent = "Erro de comunicação: " + err.message;
       });
+  }
+
+  // ===================== REANÁLISE DA EXECUÇÃO INTEIRA =====================
+  function iniciarReanalise() {
+    if (
+      !confirm(
+        "Isso vai rodar a análise de novo em todas as imagens desta execução e criar uma nova versão dos resultados. Continuar?"
+      )
+    ) {
+      return;
+    }
+
+    const btn = document.getElementById("btnReanalisar");
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise spin me-1"></i>Iniciando...';
+
+    fetch(apiUrl("/reanalisar"), { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.success) {
+          mostrarAlerta("danger", data.message);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Reanalisar';
+          return;
+        }
+        mostrarAlerta("success", data.message);
+        if (typeof monitorarProgresso === "function") monitorarProgresso();
+        aguardarConclusaoDaReanalise();
+      })
+      .catch((err) => {
+        mostrarAlerta("danger", "Erro de comunicação: " + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Reanalisar';
+      });
+  }
+
+  function aguardarConclusaoDaReanalise() {
+    const intervalo = setInterval(() => {
+      fetch("/status")
+        .then((r) => r.json())
+        .then((data) => {
+          const terminou = data.progresso >= 100 || (data.status || "").includes("Erro");
+          if (!terminou) return;
+          clearInterval(intervalo);
+          const novoRunId = data.resultado && data.resultado.run_id;
+          setTimeout(() => {
+            window.location.href = novoRunId ? `/historico/execucao/${novoRunId}` : window.location.href;
+          }, 1500);
+        })
+        .catch(() => clearInterval(intervalo));
+    }, 2000);
   }
 </script>
 {% endblock %} {% endblock %}
