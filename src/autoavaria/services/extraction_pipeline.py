@@ -30,6 +30,7 @@ from . import ai_extraction, catalogo, conversa, db, image_archive
 from .ai import construir_provedor_de_config, obter_api_key_do_provedor
 from .excel_report import salvar_relatorio_excel
 from .extraction_engines import MODO_IA, MODO_SEM_IA, MODOS_DISPONIVEIS, construir_motor
+from .report_editing import carregar_todas_sheets, remover_linhas_por_caminho_imagem, salvar_todas_sheets
 from .reports import criar_gerenciador
 
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
@@ -554,3 +555,121 @@ def reanalisar_erros(
             "sucesso": False, "erro": str(e), "total_arquivos": 0,
             "processados": 0, "corrigidos": 0, "ainda_com_erro": 0, "detalhes": [],
         }
+
+
+def reanalisar_execucao(
+    run_id: int,
+    arquivo_excel: Optional[str] = None,
+    callback_progresso: Optional[callable] = None,
+) -> Dict[str, Any]:
+    """Reanalisa todas as imagens de uma execução já concluída, criando uma
+    nova versão dela (ver versionamento em services/db.py).
+
+    Diferente de `reanalisar_erros` (que só reprocessa itens marcados como
+    erro, sem criar versão nenhuma), esta função reprocessa TODOS os itens
+    de uma execução - inclusive os que já deram certo - a pedido explícito
+    do usuário (botão "Reanalisar" no Histórico).
+    """
+    print(f"\n🔄 INICIANDO REANÁLISE DA EXECUÇÃO #{run_id}")
+    print("=" * 60)
+
+    arquivo_excel = arquivo_excel or str(ARQUIVO_SAIDA_EXCEL)
+    config = carregar_configuracao()
+    request_delay = config.get("processamento", {}).get("request_delay", 2.0)
+
+    execucao = db.obter_execucao(run_id)
+    if not execucao:
+        raise ValueError(f"Execução #{run_id} não encontrada")
+
+    raiz_execucao_id = execucao["raiz_execucao_id"] or execucao["id"]
+    itens = [item for item in execucao["itens"] if item.get("caminho_imagem")]
+
+    novo_run_id = db.iniciar_reanalise_de_execucao(raiz_execucao_id, imagens_total=len(itens))
+
+    try:
+        if not itens:
+            db.finalizar_execucao(novo_run_id, "concluido", mensagem="Nenhuma imagem com caminho registrado para reanalisar")
+            return {"sucesso": True, "run_id": novo_run_id, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0}
+
+        provider = construir_provedor_de_config(config)
+        print(f"✅ {provider.nome_provedor} configurado para a reanálise")
+
+        # Reaproveita a correlação de mensagem já gravada na execução original
+        # em vez de tentar reler um conversa.txt que pode nem existir mais
+        # perto de imagens já arquivadas há muito tempo.
+        mensagens_por_imagem = {
+            os.path.basename(item["caminho_imagem"]): item["observacao_mensagem"]
+            for item in itens
+            if item.get("observacao_mensagem") and item["observacao_mensagem"] not in ("Nenhuma", "N/A")
+        }
+
+        caminhos_originais = {item["caminho_imagem"] for item in itens}
+        novas_avarias, novos_usos_internos, novos_erros = [], [], []
+        tokens_totais = 0
+
+        for idx, item in enumerate(itens, 1):
+            caminho_imagem = item["caminho_imagem"]
+            nome_arquivo = os.path.basename(caminho_imagem)
+
+            if callback_progresso:
+                callback_progresso({"atual": idx, "total": len(itens), "arquivo": nome_arquivo})
+
+            if not os.path.exists(caminho_imagem):
+                novos_erros.append({
+                    "Arquivo": nome_arquivo,
+                    "Detalhes do Erro": "Arquivo de imagem não encontrado para reanálise",
+                    "Observação da Mensagem": mensagens_por_imagem.get(nome_arquivo, "Nenhuma"),
+                    "Caminho da Imagem": caminho_imagem,
+                    "Ver Imagem": caminho_imagem,
+                })
+            else:
+                try:
+                    resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                    tokens_totais += tokens
+                    ai_extraction.processar_resultado_arquivo(
+                        nome_arquivo, resultado, mensagens_por_imagem, os.path.dirname(caminho_imagem),
+                        novas_avarias, novos_usos_internos, novos_erros,
+                    )
+                except Exception as e:
+                    novos_erros.append({
+                        "Arquivo": nome_arquivo,
+                        "Detalhes do Erro": f"Erro na reanálise: {e}",
+                        "Observação da Mensagem": mensagens_por_imagem.get(nome_arquivo, "Nenhuma"),
+                        "Caminho da Imagem": caminho_imagem,
+                        "Ver Imagem": caminho_imagem,
+                    })
+
+            if idx < len(itens):
+                time.sleep(request_delay)
+
+        # Só remove as linhas antigas do Excel DEPOIS de ter os novos
+        # resultados prontos (nem que seja tudo erro) - uma queda no meio do
+        # processo nunca deixa o relatório sem as linhas de uma versão válida.
+        sheets_atuais = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
+        sheets_sem_antigas = remover_linhas_por_caminho_imagem(sheets_atuais, caminhos_originais)
+        if sheets_sem_antigas:
+            salvar_todas_sheets(arquivo_excel, sheets_sem_antigas)
+
+        salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos_internos, novos_erros)
+        db.registrar_itens(novo_run_id, "Avarias", novas_avarias)
+        db.registrar_itens(novo_run_id, "Uso Interno", novos_usos_internos)
+        db.registrar_itens(novo_run_id, "Erros de Análise", novos_erros)
+        db.registrar_consumo_tokens(novo_run_id, tokens_totais, f"Reanálise de {len(itens)} imagens")
+        db.finalizar_execucao(
+            novo_run_id, "concluido", len(novas_avarias), len(novos_usos_internos),
+            len(novos_erros), tokens_totais,
+        )
+
+        print(f"✅ REANÁLISE DA EXECUÇÃO #{run_id} CONCLUÍDA -> nova versão #{novo_run_id}")
+        return {
+            "sucesso": True, "run_id": novo_run_id, "total_arquivos": len(itens),
+            "avarias": len(novas_avarias), "uso_interno": len(novos_usos_internos), "erros": len(novos_erros),
+        }
+
+    except Exception as e:
+        print(f"\n❌ Erro crítico na reanálise da execução #{run_id}: {e}")
+        import traceback
+
+        traceback.print_exc()
+        db.finalizar_execucao(novo_run_id, "erro", mensagem=str(e))
+        return {"sucesso": False, "erro": str(e), "run_id": novo_run_id}

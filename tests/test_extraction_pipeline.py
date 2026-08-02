@@ -480,3 +480,114 @@ class TestListarImagensPendentes:
         monkeypatch.setattr(pipeline, "UPLOAD_FOLDER", pasta)
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", tmp_path / "log.txt")
         assert pipeline.listar_imagens_pendentes() == ["IMG-1.jpg"]
+
+
+class TestReanalisarExecucao:
+    @pytest.fixture
+    def execucao_existente(self, tmp_path, monkeypatch, tmp_db):
+        """Uma execução já concluída, com 2 imagens já 'arquivadas' (fora da
+        pasta de pendentes) - o caso normal de uma execução bem-sucedida."""
+        from PIL import Image
+
+        pasta_arquivadas = tmp_path / "arquivadas"
+        pasta_arquivadas.mkdir()
+        Image.new("RGB", (4, 4), color="red").save(pasta_arquivadas / "IMG-1.jpg")
+        Image.new("RGB", (4, 4), color="blue").save(pasta_arquivadas / "IMG-2.jpg")
+
+        excel = tmp_path / "Relatorio.xlsx"
+        avarias = [
+            {
+                "Produto": "TOMATE", "Quantidade": 1, "Peso": "1kg",
+                "Observação da Mensagem": "Nenhuma",
+                "Caminho da Imagem": str(pasta_arquivadas / "IMG-1.jpg"),
+                "Ver Imagem": str(pasta_arquivadas / "IMG-1.jpg"),
+            },
+            {
+                "Produto": "ALFACE", "Quantidade": 1, "Peso": "0.5kg",
+                "Observação da Mensagem": "Nenhuma",
+                "Caminho da Imagem": str(pasta_arquivadas / "IMG-2.jpg"),
+                "Ver Imagem": str(pasta_arquivadas / "IMG-2.jpg"),
+            },
+        ]
+        pipeline.salvar_relatorio_excel(str(excel), avarias, [], [])
+
+        run_id = tmp_db.iniciar_execucao("processamento", imagens_total=2)
+        tmp_db.registrar_itens(run_id, "Avarias", avarias)
+        tmp_db.finalizar_execucao(run_id, "concluido", avarias=2, uso_interno=0, erros=0)
+
+        monkeypatch.setattr(pipeline, "ARQUIVO_SAIDA_EXCEL", excel)
+        monkeypatch.setattr(
+            pipeline, "carregar_configuracao",
+            lambda: {
+                "api": {"provider": "gemini", "gemini_api_key": "fake-key"},
+                "processamento": {"request_delay": 0},
+            },
+        )
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+
+        return {"run_id": run_id, "excel": excel, "arquivadas": pasta_arquivadas}
+
+    def test_cria_nova_versao_vinculada_a_mesma_linhagem(self, execucao_existente):
+        def fake_extrair(lote, provider, mensagens):
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": "TOMATE REANALISADO", "peso": "1kg"}]}}, 10
+
+        import os
+
+        pipeline.ai_extraction.extrair_dados_de_lote = fake_extrair
+        resultado = pipeline.reanalisar_execucao(execucao_existente["run_id"])
+
+        assert resultado["sucesso"] is True
+        nova_versao = pipeline.db.obter_execucao(resultado["run_id"])
+        assert nova_versao["raiz_execucao_id"] == execucao_existente["run_id"]
+        assert nova_versao["versao"] == 2
+
+    def test_substitui_linhas_antigas_no_excel_sem_duplicar(self, execucao_existente, monkeypatch):
+        import os
+
+        def fake_extrair(lote, provider, mensagens):
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": f"{nome}-REANALISADO", "peso": "1kg"}]}}, 10
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+
+        pipeline.reanalisar_execucao(execucao_existente["run_id"])
+
+        from autoavaria.services.report_editing import carregar_todas_sheets
+
+        sheets = carregar_todas_sheets(str(execucao_existente["excel"]))
+        produtos = list(sheets["Avarias"]["Produto"])
+        assert produtos == ["IMG-1.jpg-REANALISADO", "IMG-2.jpg-REANALISADO"]  # 2 linhas, não 4
+
+    def test_imagem_que_sumiu_do_disco_vira_erro_sem_derrubar_o_resto(self, execucao_existente, monkeypatch):
+        import os
+
+        (execucao_existente["arquivadas"] / "IMG-1.jpg").unlink()
+
+        def fake_extrair(lote, provider, mensagens):
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": "OK", "peso": "1kg"}]}}, 10
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+
+        resultado = pipeline.reanalisar_execucao(execucao_existente["run_id"])
+
+        assert resultado["sucesso"] is True
+        assert resultado["erros"] == 1
+        assert resultado["avarias"] == 1
+
+    def test_reporta_progresso_por_callback(self, execucao_existente, monkeypatch):
+        import os
+
+        def fake_extrair(lote, provider, mensagens):
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": "OK", "peso": "1kg"}]}}, 10
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+
+        chamadas = []
+        pipeline.reanalisar_execucao(execucao_existente["run_id"], callback_progresso=lambda info: chamadas.append(info))
+
+        assert len(chamadas) == 2
+        assert chamadas[0]["total"] == 2
+        assert chamadas[-1]["atual"] == 2
