@@ -584,10 +584,21 @@ def reanalisar_execucao(
     raiz_execucao_id = execucao["raiz_execucao_id"] or execucao["id"]
     itens = [item for item in execucao["itens"] if item.get("caminho_imagem")]
 
-    novo_run_id = db.iniciar_reanalise_de_execucao(raiz_execucao_id, imagens_total=len(itens))
+    # Uma mesma imagem pode ter gerado MAIS DE UMA linha na análise original
+    # (ex.: uma foto de um palete com 2 produtos avariados vira 2 linhas em
+    # "Avarias", ambas com o mesmo "caminho_imagem"). Deduplicar por caminho
+    # aqui garante que a IA seja chamada uma única vez por imagem - do
+    # contrário a mesma imagem seria reanalisada 2x e os resultados de cada
+    # chamada seriam somados, duplicando/inflando os dados dela.
+    itens_por_caminho: Dict[str, Dict[str, Any]] = {}
+    for item in itens:
+        itens_por_caminho.setdefault(item["caminho_imagem"], item)
+    itens_unicos = list(itens_por_caminho.values())
+
+    novo_run_id = db.iniciar_reanalise_de_execucao(raiz_execucao_id, imagens_total=len(itens_unicos))
 
     try:
-        if not itens:
+        if not itens_unicos:
             db.finalizar_execucao(novo_run_id, "concluido", mensagem="Nenhuma imagem com caminho registrado para reanalisar")
             return {"sucesso": True, "run_id": novo_run_id, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0}
 
@@ -596,23 +607,25 @@ def reanalisar_execucao(
 
         # Reaproveita a correlação de mensagem já gravada na execução original
         # em vez de tentar reler um conversa.txt que pode nem existir mais
-        # perto de imagens já arquivadas há muito tempo.
+        # perto de imagens já arquivadas há muito tempo. Uma linha
+        # representante por imagem única basta - todas as linhas da mesma
+        # imagem descrevem a mesma foto/mensagem.
         mensagens_por_imagem = {
             os.path.basename(item["caminho_imagem"]): item["observacao_mensagem"]
-            for item in itens
+            for item in itens_unicos
             if item.get("observacao_mensagem") and item["observacao_mensagem"] not in ("Nenhuma", "N/A")
         }
 
-        caminhos_originais = {item["caminho_imagem"] for item in itens}
+        caminhos_originais = set(itens_por_caminho.keys())
         novas_avarias, novos_usos_internos, novos_erros = [], [], []
         tokens_totais = 0
 
-        for idx, item in enumerate(itens, 1):
+        for idx, item in enumerate(itens_unicos, 1):
             caminho_imagem = item["caminho_imagem"]
             nome_arquivo = os.path.basename(caminho_imagem)
 
             if callback_progresso:
-                callback_progresso({"atual": idx, "total": len(itens), "arquivo": nome_arquivo})
+                callback_progresso({"atual": idx, "total": len(itens_unicos), "arquivo": nome_arquivo})
 
             if not os.path.exists(caminho_imagem):
                 novos_erros.append({
@@ -639,7 +652,7 @@ def reanalisar_execucao(
                         "Ver Imagem": caminho_imagem,
                     })
 
-            if idx < len(itens):
+            if idx < len(itens_unicos):
                 time.sleep(request_delay)
 
         # Só remove as linhas antigas do Excel DEPOIS de ter os novos
@@ -654,7 +667,7 @@ def reanalisar_execucao(
         db.registrar_itens(novo_run_id, "Avarias", novas_avarias)
         db.registrar_itens(novo_run_id, "Uso Interno", novos_usos_internos)
         db.registrar_itens(novo_run_id, "Erros de Análise", novos_erros)
-        db.registrar_consumo_tokens(novo_run_id, tokens_totais, f"Reanálise de {len(itens)} imagens")
+        db.registrar_consumo_tokens(novo_run_id, tokens_totais, f"Reanálise de {len(itens_unicos)} imagens")
         db.finalizar_execucao(
             novo_run_id, "concluido", len(novas_avarias), len(novos_usos_internos),
             len(novos_erros), tokens_totais,
@@ -662,7 +675,7 @@ def reanalisar_execucao(
 
         print(f"✅ REANÁLISE DA EXECUÇÃO #{run_id} CONCLUÍDA -> nova versão #{novo_run_id}")
         return {
-            "sucesso": True, "run_id": novo_run_id, "total_arquivos": len(itens),
+            "sucesso": True, "run_id": novo_run_id, "total_arquivos": len(itens_unicos),
             "avarias": len(novas_avarias), "uso_interno": len(novos_usos_internos), "erros": len(novos_erros),
         }
 

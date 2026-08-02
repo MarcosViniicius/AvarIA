@@ -527,14 +527,14 @@ class TestReanalisarExecucao:
 
         return {"run_id": run_id, "excel": excel, "arquivadas": pasta_arquivadas}
 
-    def test_cria_nova_versao_vinculada_a_mesma_linhagem(self, execucao_existente):
+    def test_cria_nova_versao_vinculada_a_mesma_linhagem(self, execucao_existente, monkeypatch):
+        import os
+
         def fake_extrair(lote, provider, mensagens):
             nome = os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "TOMATE REANALISADO", "peso": "1kg"}]}}, 10
 
-        import os
-
-        pipeline.ai_extraction.extrair_dados_de_lote = fake_extrair
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
         resultado = pipeline.reanalisar_execucao(execucao_existente["run_id"])
 
         assert resultado["sucesso"] is True
@@ -591,3 +591,64 @@ class TestReanalisarExecucao:
         assert len(chamadas) == 2
         assert chamadas[0]["total"] == 2
         assert chamadas[-1]["atual"] == 2
+
+    def test_imagem_com_multiplas_linhas_e_analisada_uma_unica_vez(self, tmp_path, monkeypatch, tmp_db):
+        """Uma foto de um palete com 2 produtos avariados gera 2 linhas em
+        "Avarias" no relatório original, ambas com o mesmo caminho_imagem.
+        Reanalisar essa execução não pode chamar a IA 2x para a mesma
+        imagem - isso duplicaria/infralaria os dados dela no novo relatório."""
+        import os
+
+        from PIL import Image
+
+        pasta_arquivadas = tmp_path / "arquivadas"
+        pasta_arquivadas.mkdir()
+        Image.new("RGB", (4, 4), color="green").save(pasta_arquivadas / "IMG-PALETE.jpg")
+
+        excel = tmp_path / "Relatorio.xlsx"
+        caminho_imagem = str(pasta_arquivadas / "IMG-PALETE.jpg")
+        avarias = [
+            {
+                "Produto": "TOMATE", "Quantidade": 1, "Peso": "1kg",
+                "Observação da Mensagem": "Nenhuma",
+                "Caminho da Imagem": caminho_imagem,
+                "Ver Imagem": caminho_imagem,
+            },
+            {
+                "Produto": "ALFACE", "Quantidade": 1, "Peso": "0.5kg",
+                "Observação da Mensagem": "Nenhuma",
+                "Caminho da Imagem": caminho_imagem,
+                "Ver Imagem": caminho_imagem,
+            },
+        ]
+        pipeline.salvar_relatorio_excel(str(excel), avarias, [], [])
+
+        run_id = tmp_db.iniciar_execucao("processamento", imagens_total=1)
+        tmp_db.registrar_itens(run_id, "Avarias", avarias)
+        tmp_db.finalizar_execucao(run_id, "concluido", avarias=2, uso_interno=0, erros=0)
+
+        monkeypatch.setattr(pipeline, "ARQUIVO_SAIDA_EXCEL", excel)
+        monkeypatch.setattr(
+            pipeline, "carregar_configuracao",
+            lambda: {
+                "api": {"provider": "gemini", "gemini_api_key": "fake-key"},
+                "processamento": {"request_delay": 0},
+            },
+        )
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+
+        chamadas_por_caminho = {}
+
+        def fake_extrair(lote, provider, mensagens):
+            for caminho in lote:
+                chamadas_por_caminho[caminho] = chamadas_por_caminho.get(caminho, 0) + 1
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": "PALETE-REANALISADO", "peso": "2kg"}]}}, 10
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+
+        resultado = pipeline.reanalisar_execucao(run_id)
+
+        assert resultado["sucesso"] is True
+        assert resultado["total_arquivos"] == 1  # 1 imagem única, não 2 linhas
+        assert chamadas_por_caminho[caminho_imagem] == 1  # IA chamada uma única vez para essa imagem
