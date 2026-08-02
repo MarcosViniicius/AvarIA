@@ -152,6 +152,16 @@ endblock %} {% block content %}
           </div>
         </div>
 
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="forcarReprocessamentoCheck" />
+          <label class="form-check-label" for="forcarReprocessamentoCheck">
+            Forçar reprocessamento (ignorar duplicados)
+          </label>
+          <div class="form-text">
+            Marque para reanalisar arquivos idênticos a um envio anterior — por padrão eles são ignorados para não duplicar o relatório.
+          </div>
+        </div>
+
         <div class="mt-3 d-flex gap-2 justify-content-center">
           <button id="refreshStatusBtn" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-arrow-clockwise me-1"></i>Atualizar Status
@@ -180,6 +190,7 @@ endblock %} {% block content %}
     const alertContainer = document.getElementById("alertContainer");
     const refreshStatusBtn = document.getElementById("refreshStatusBtn");
     const processarAgoraBtn = document.getElementById("processarAgoraBtn");
+    const forcarReprocessamentoCheck = document.getElementById("forcarReprocessamentoCheck");
 
     let selectedFiles = [];
 
@@ -202,7 +213,7 @@ endblock %} {% block content %}
       fetch("/processar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ forcar_reprocessamento: forcarReprocessamentoCheck.checked }),
       })
         .then((response) => response.json())
         .then((data) => {
@@ -404,6 +415,9 @@ endblock %} {% block content %}
       selectedFiles.forEach((file) => {
         formData.append("files", file);
       });
+      if (forcarReprocessamentoCheck.checked) {
+        formData.append("forcar_reprocessamento", "true");
+      }
 
       // Mostrar progresso
       document.getElementById("dropZoneContent").classList.add("d-none");
