@@ -80,3 +80,20 @@ def salvar_todas_sheets(arquivo_excel, sheets, apenas_nao_vazias=False):
             if apenas_nao_vazias and dataframe.empty:
                 continue
             dataframe.to_excel(writer, sheet_name=nome_sheet, index=False)
+
+
+def remover_linhas_por_caminho_imagem(sheets, caminhos):
+    """Remove, de todas as planilhas, as linhas cujo 'Caminho da Imagem' está em `caminhos`.
+
+    Usado antes de gravar o resultado de uma reanálise de execução (ver
+    services/extraction_pipeline.py:reanalisar_execucao): sem remover as
+    linhas antigas dessas mesmas imagens primeiro, a mesma imagem contaria
+    duas vezes no relatório mestre (a versão antiga E a nova).
+    """
+    resultado = {}
+    for nome, df in sheets.items():
+        if "Caminho da Imagem" in df.columns and not df.empty:
+            resultado[nome] = df[~df["Caminho da Imagem"].isin(caminhos)].reset_index(drop=True)
+        else:
+            resultado[nome] = df
+    return resultado
