@@ -7,9 +7,12 @@ arquivos em si continuam em resultados/ — esta tela só lista/organiza o que
 já existe, sem duplicar dados.
 """
 
+import threading
+
 from flask import abort, jsonify, render_template, request, send_file
 
 from ..core.paths import RESULTADOS_DIR
+from ..services import app_state
 from ..services import db as db_service
 from ..services import execucao_export
 from ..services.relatorio_view import (
@@ -45,8 +48,17 @@ def historico_execucao(run_id):
     execucao = db_service.obter_execucao(run_id)
     if not execucao:
         abort(404)
+    raiz_execucao_id = execucao["raiz_execucao_id"] or execucao["id"]
+    versoes = db_service.listar_versoes(raiz_execucao_id)
+    eh_versao_mais_recente = not versoes or execucao["versao"] == max(v["versao"] for v in versoes)
     dados = _construir_dados_relatorio(execucao["itens"])
-    return render_template("historico_execucao.html", execucao=execucao, dados=dados)
+    return render_template(
+        "historico_execucao.html",
+        execucao=execucao,
+        dados=dados,
+        versoes=versoes,
+        eh_versao_mais_recente=eh_versao_mais_recente,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,3 +221,64 @@ def historico_unificar(run_id):
         "filename": nome_arquivo,
         "formato": formato,
     })
+
+
+# ---------------------------------------------------------------------------
+# Reanálise versionada de uma execução (ver services/extraction_pipeline.py e
+# o versionamento em services/db.py). Diferente de /api/reanalisar_erros
+# (reprocessa só itens com erro, sem criar versão nova), esta rota reprocessa
+# TODOS os itens da execução e cria uma nova versão na mesma linhagem.
+# ---------------------------------------------------------------------------
+
+@app.route("/historico/execucao/<int:run_id>/reanalisar", methods=["POST"])
+def historico_reanalisar(run_id):
+    """Reanalisa todas as imagens desta execução, criando uma nova versão."""
+    execucao = db_service.obter_execucao(run_id)
+    if not execucao:
+        abort(404)
+
+    raiz_execucao_id = execucao["raiz_execucao_id"] or execucao["id"]
+    versoes = db_service.listar_versoes(raiz_execucao_id)
+    versao_mais_recente = max(v["versao"] for v in versoes) if versoes else execucao["versao"]
+    if execucao["versao"] != versao_mais_recente:
+        return jsonify({
+            "success": False,
+            "message": "Só é possível reanalisar a versão mais recente desta análise",
+        }), 400
+
+    if app_state.processamento_ativo:
+        return jsonify({"success": False, "message": "Já existe um processamento em andamento"}), 400
+
+    app_state.processamento_ativo = True
+    app_state.progresso_atual = {
+        "progresso": 0,
+        "status": f"Iniciando reanálise da execução #{run_id}",
+        "logs": [f"🔄 Iniciando reanálise da execução #{run_id}"],
+    }
+
+    def callback_progresso(info):
+        progresso = int((info["atual"] / info["total"]) * 100) if info["total"] else 100
+        app_state.progresso_atual["progresso"] = progresso
+        app_state.progresso_atual["status"] = f"Reanalisando: {info['arquivo']}"
+        app_state.progresso_atual["logs"].append(f"[{info['atual']}/{info['total']}] {info['arquivo']}")
+
+    def executar_reanalise():
+        try:
+            from ..services.extraction_pipeline import reanalisar_execucao
+
+            resultado = reanalisar_execucao(run_id, callback_progresso=callback_progresso)
+            app_state.progresso_atual["progresso"] = 100
+            app_state.progresso_atual["status"] = "Reanálise concluída"
+            app_state.progresso_atual["resultado"] = resultado
+            app_state.progresso_atual["logs"].append(
+                f"✅ Reanálise concluída: nova versão #{resultado.get('run_id')}"
+            )
+        except Exception as e:
+            app_state.progresso_atual["status"] = f"Erro na reanálise: {e}"
+            app_state.progresso_atual["logs"].append(f"❌ Erro: {e}")
+            app_state.progresso_atual["erro"] = str(e)
+        finally:
+            app_state.processamento_ativo = False
+
+    threading.Thread(target=executar_reanalise, daemon=True).start()
+    return jsonify({"success": True, "message": "Reanálise iniciada!"})
