@@ -1,6 +1,26 @@
-# 🔍 Auto Avaria - Sistema de Análise de Avarias
+# 🔍 Auto Avaria
 
-Sistema inteligente para análise automatizada de imagens de avarias usando IA.
+Sistema web para automatizar o registro de avarias de mercadorias em loja: a partir de fotos dos produtos (e, opcionalmente, da conversa do WhatsApp que acompanha o envio), o sistema identifica cada item, extrai os dados relevantes (código de barras, valor, quantidade) e monta um relatório estruturado — pronto para exportar em Excel/TXT — separando os casos em **Avaria**, **Uso Interno** e **Erro**.
+
+## 🎯 Como funciona
+
+Cada execução processa um lote de imagens em duas frentes, que podem ser combinadas:
+
+1. **Leitura de código de barras (sem IA)** — decodifica localmente o EAN-13 da etiqueta usando `opencv` + `zxing-cpp`, sem chamadas de rede. Reconhece tanto o EAN-13 comum (produto industrializado) quanto o código de balança de peso variável (que já embute o valor em centavos).
+2. **Extração com IA** — quando o código de barras não é suficiente (etiqueta ilegível, produto sem código, contexto da conversa), a imagem (e o texto do WhatsApp associado a ela) é enviada a um provedor de IA (Gemini, OpenAI, Claude ou OpenRouter) que devolve os dados estruturados da avaria.
+
+O resultado de cada execução fica registrado no histórico (SQLite), com **versionamento**: é possível reanalisar apenas os itens que deram erro, ou reprocessar uma execução inteira como uma nova versão, sem perder o histórico da versão anterior. Depois, os relatórios de várias execuções podem ser **unificados** em um único Excel/TXT, com filtros por período, loja, etc.
+
+## 📚 Funcionalidades
+
+- ✅ **Extração híbrida**: código de barras local (rápido, sem custo de API) + IA como complemento/fallback
+- ✅ **Múltiplos provedores de IA**: Gemini, OpenAI, Claude e OpenRouter, com busca automática dos modelos disponíveis
+- ✅ **Histórico com versionamento**: cada reprocessamento gera uma nova versão da execução, mantendo a anterior rastreável
+- ✅ **Reanálise sob demanda**: reanalisa só os itens com erro ou a execução inteira, com opção de forçar reprocessamento
+- ✅ **Edição de relatório**: corrige, move, adiciona ou exclui linhas do relatório direto pela interface
+- ✅ **Unificação de relatórios**: combina o resultado de várias execuções em um único relatório exportável
+- ✅ **Exportação em Excel e TXT**, com filtros personalizados de colunas/período
+- ✅ **Interface web** (Flask + Bootstrap) com tema claro/escuro, logs em tempo real e dashboard de estatísticas
 
 ## 🚀 Início Rápido
 
@@ -12,7 +32,7 @@ Sistema inteligente para análise automatizada de imagens de avarias usando IA.
 
 1. **Clone o repositório**
 ```bash
-git clone <seu-repositorio>
+git clone https://github.com/MarcosViniicius/autoavaria
 cd autoavaria
 ```
 
@@ -37,7 +57,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-O arquivo `config.json` será **criado automaticamente** na primeira execução com as configurações padrão!
+O arquivo `config/config.json` será **criado automaticamente** na primeira execução com as configurações padrão.
 
 ## ⚙️ Configuração
 
@@ -105,19 +125,24 @@ As configurações são salvas automaticamente no arquivo `config.json`.
 
 ```
 autoavaria/
-├── app.py                          # Aplicação Flask principal
+├── app.py                              # Entrypoint (Flask app + handlers p/ Vercel)
 ├── config/
-│   ├── config.json                 # Configurações (gerado automaticamente)
-│   └── config.example.json         # Template de configuração
-├── src/
-│   ├── ai_providers.py             # Abstração de provedores de IA
-│   ├── extrair_arquivos.py         # Extração de dados
-│   └── ...
-├── templates/                      # Templates HTML
-├── static/                         # CSS, JS, imagens
-├── imagens_para_analisar/          # Upload de imagens
-├── resultados/                     # Relatórios gerados
-└── logs/                           # Logs do sistema
+│   ├── config.json                     # Configurações (gerado automaticamente, não versionado)
+│   └── config.example.json             # Template de configuração
+├── src/autoavaria/
+│   ├── routes/                         # Blueprints Flask (upload, processamento, histórico,
+│   │                                    # relatório, edição, unificação, erros/reanálise, etc.)
+│   ├── services/                       # Regras de negócio: extração (IA + código de barras),
+│   │                                    # banco de dados, relatórios, unificação, config, etc.
+│   ├── core/                           # Paths, logging e exceções compartilhadas
+│   ├── templates/                      # Templates HTML (Jinja)
+│   └── static/                         # CSS e JS
+├── database/                           # Banco SQLite com o índice de execuções/histórico
+├── imagens_para_analisar/              # Upload de imagens
+├── imagens_processadas/                # Imagens já processadas
+├── resultados/                         # Relatórios gerados (Excel/TXT)
+├── logs/                                # Logs do sistema
+└── tests/                              # Testes automatizados (pytest)
 ```
 
 ## 🔒 Segurança
@@ -136,9 +161,16 @@ autoavaria/
    export OPENAI_API_KEY="sua-chave-aqui"
    ```
 
+## 🧪 Testes
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
 ## 🌐 Deploy
 
-### Vercel (Recomendado)
+### Vercel
 
 1. Instale o Vercel CLI:
 ```bash
@@ -155,15 +187,6 @@ npm i -g vercel
 ```bash
 vercel
 ```
-
-## 📚 Funcionalidades
-
-- ✅ **Análise Automatizada**: Processa imagens de avarias usando IA
-- ✅ **Múltiplos Provedores**: Suporte para Gemini, OpenAI, Claude e OpenRouter
-- ✅ **Busca Dinâmica de Modelos**: Lista automaticamente modelos disponíveis de cada API
-- ✅ **Relatórios Unificados**: Exportação em Excel e TXT com filtros personalizados
-- ✅ **Interface Web Moderna**: Bootstrap 5 com tema escuro/claro
-- ✅ **Configuração Simplificada**: Config.json gerado automaticamente
 
 ## 🆘 Solução de Problemas
 
