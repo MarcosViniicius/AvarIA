@@ -349,9 +349,73 @@ document.addEventListener("DOMContentLoaded", function () {
   // Envio da unificação para o notepad do invertexto. O texto é público no
   // link, então confirmamos antes — e o servidor regenera/sanitiza o conteúdo
   // (esta rota não aceita texto do cliente).
+  //
+  // Depois do envio, o resultado fica VISÍVEL no modal (bloco #invertextoStatus)
+  // com o link pronto para copiar/abrir: um alerta que some não deixa o
+  // usuário recuperar a URL depois.
   (function ligarEnvioInvertexto() {
     const btn = document.getElementById("btnEnviarInvertexto");
     if (!btn) return;
+
+    const blocoStatus = document.getElementById("invertextoStatus");
+    const campoLink = document.getElementById("invertextoLink");
+    const btnCopiarLink = document.getElementById("btnCopiarLinkInvertexto");
+    const btnAbrir = document.getElementById("btnAbrirInvertexto");
+    const elTitulo = document.getElementById("invertextoStatusTitulo");
+    const elDetalhe = document.getElementById("invertextoStatusDetalhe");
+
+    function mostrarStatus(url, caracteres) {
+      if (!blocoStatus) return;
+      // Um envio com sucesso depois de uma falha precisa voltar ao visual
+      // positivo (o bloco é reaproveitado para os dois estados).
+      const alerta = blocoStatus.querySelector(".alert");
+      if (alerta) {
+        alerta.classList.remove("alert-danger");
+        alerta.classList.add("alert-success");
+      }
+      if (elTitulo) elTitulo.textContent = "Relatório publicado no invertexto";
+      if (elDetalhe) {
+        elDetalhe.textContent =
+          "Enviado com " + Number(caracteres).toLocaleString("pt-BR") +
+          " caracteres. O link abaixo abre o relatório:";
+      }
+      if (campoLink) campoLink.value = url;
+      if (btnAbrir) btnAbrir.setAttribute("href", url);
+      blocoStatus.classList.remove("d-none");
+    }
+
+    function mostrarErroStatus(mensagem) {
+      if (!blocoStatus) return;
+      if (elTitulo) elTitulo.textContent = "Não foi possível publicar no invertexto";
+      if (elDetalhe) elDetalhe.textContent = mensagem;
+      if (campoLink) campoLink.value = "";
+      if (btnAbrir) btnAbrir.setAttribute("href", "#");
+      // Reaproveita o visual do bloco, mas marcando o erro.
+      blocoStatus.classList.remove("d-none");
+      const alerta = blocoStatus.querySelector(".alert");
+      if (alerta) {
+        alerta.classList.remove("alert-success");
+        alerta.classList.add("alert-danger");
+      }
+    }
+
+    if (btnCopiarLink) {
+      btnCopiarLink.addEventListener("click", function () {
+        const texto = (campoLink && campoLink.value) || "";
+        if (!texto) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(texto).then(function () {
+            const anterior = btnCopiarLink.innerHTML;
+            btnCopiarLink.innerHTML = '<i class="bi bi-check-lg"></i>';
+            setTimeout(function () { btnCopiarLink.innerHTML = anterior; }, 1500);
+          }).catch(function () {
+            if (campoLink) campoLink.select();
+          });
+        } else if (campoLink) {
+          campoLink.select();
+        }
+      });
+    }
 
     btn.addEventListener("click", function () {
       const url = (window.INVERTEXTO_URL || "https://www.invertexto.com/autoava");
@@ -376,24 +440,17 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, dados: j }; }); })
         .then(function (res) {
           btn.disabled = false;
+          btn.innerHTML = anterior;
           if (res.ok && res.dados.success) {
-            btn.innerHTML = '<i class="bi bi-check-lg me-2"></i>Enviado!';
-            const alvo = res.dados.url || url;
-            setTimeout(function () {
-              if (window.confirm("Enviado (" + res.dados.caracteres + " caracteres).\n\nAbrir " + alvo + "?")) {
-                window.open(alvo, "_blank", "noopener");
-              }
-              btn.innerHTML = anterior;
-            }, 300);
+            mostrarStatus(res.dados.url || url, res.dados.caracteres || 0);
           } else {
-            btn.innerHTML = anterior;
-            alert(res.dados.message || "Não foi possível enviar para o invertexto.");
+            mostrarErroStatus(res.dados.message || "Não foi possível enviar para o invertexto.");
           }
         })
         .catch(function (err) {
           btn.disabled = false;
           btn.innerHTML = anterior;
-          alert("Erro de comunicação: " + err.message);
+          mostrarErroStatus("Erro de comunicação: " + err.message);
         });
     });
   })();

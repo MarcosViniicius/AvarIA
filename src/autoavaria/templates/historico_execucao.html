@@ -463,6 +463,34 @@ Histórico{% endblock %} {% block head %}
               <i class="bi bi-send me-2"></i>Enviar para o invertexto
             </button>
           </div>
+
+          <!-- Confirmação persistente do envio: fica visível no modal com o
+               link pronto, para o usuário não depender de um alerta que some. -->
+          <div id="invertextoStatus" class="d-none mt-3">
+            <div class="alert alert-success mb-0">
+              <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-check-circle-fill text-success mt-1"></i>
+                <div class="flex-grow-1 min-w-0">
+                  <strong id="invertextoStatusTitulo">Relatório publicado no invertexto</strong>
+                  <p class="mb-2 small" id="invertextoStatusDetalhe"></p>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="invertextoLink" readonly />
+                    <button type="button" class="btn btn-outline-secondary" id="btnCopiarLinkInvertexto"
+                            title="Copiar link">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                    <a class="btn btn-primary" id="btnAbrirInvertexto" href="#" target="_blank" rel="noopener">
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Abrir
+                    </a>
+                  </div>
+                  <p class="mb-0 mt-2 text-muted" style="font-size: 0.8rem;">
+                    <i class="bi bi-info-circle me-1"></i>Qualquer pessoa com este link pode ler o relatório.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="d-flex align-items-center gap-2 mb-2 mt-2">
             <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExpandirUnificadoExec">
               <i class="bi bi-eye me-1"></i>Expandir para visualizar
