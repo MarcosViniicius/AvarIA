@@ -1,5 +1,84 @@
 /* components.css - Componentes: botoes, formularios, cards, tabelas, badges, alertas, toasts.
    Eram as secoes 5-8 do style.css. */
+/* Faixa de metricas: uma linha de itens (icone/rotulo + numero), separados por
+   hairline. Nasceu no dashboard; agora tambem serve a aba Dados das
+   Configuracoes, entao vive no nucleo. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.stat-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  min-width: 0;
+}
+.stat-strip-item + .stat-strip-item {
+  border-left: 1px solid var(--line);
+}
+.stat-strip-item > .bi {
+  font-size: 1.25rem;
+  flex: 0 0 auto;
+}
+.stat-strip-label {
+  margin-bottom: 0.1rem;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.stat-strip-value {
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Variante empilhada (rotulo em cima, numero embaixo): usada quando os itens
+   nao tem icone. `.stat-strip-item` e flex-row, entao precisa do modifier. */
+.stat-strip--col .stat-strip-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+/* Lista de estado (rotulo a esquerda, valor a direita) sem <hr> entre linhas. */
+.stat-list {
+  margin: 0;
+}
+.stat-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+}
+.stat-list-row + .stat-list-row {
+  border-top: 1px solid var(--line);
+}
+.stat-list-row dt {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+.stat-list-row dt .bi {
+  margin-right: 0.4rem;
+}
+.stat-list-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 5. Botões ---------------------------------------------------------------- */
 .btn {
   --bs-btn-font-size: 0.9rem;

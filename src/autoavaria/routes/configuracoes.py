@@ -9,20 +9,27 @@ from flask import flash, jsonify, make_response, redirect, render_template, requ
 from .blueprint import web_bp as app
 from .context import CONFIG_FILE
 from ..services.config_service import carregar_configuracao, salvar_configuracao
+from ..services.resumo_dados import obter_resumo_dados
 from ..services.stats import obter_estatisticas
 
 
 @app.route("/configuracoes")
 def configuracoes():
-    """Página de configurações."""
+    """Página de configurações.
+
+    `stats` alimenta os números do topo (tokens hoje, último processamento);
+    `dados` alimenta a aba "Dados" com o estado real do acervo — relatório,
+    execuções e o que dá para gerenciar.
+    """
     config = carregar_configuracao()
     stats = obter_estatisticas()
+    dados = obter_resumo_dados()
 
     # Avisar sobre limitações na Vercel
     if "VERCEL" in os.environ:
         config["_vercel_env"] = True
 
-    return render_template("configuracoes.html", config=config, stats=stats)
+    return render_template("configuracoes.html", config=config, stats=stats, dados=dados)
 
 
 def _config_sem_chaves(config: dict) -> dict:

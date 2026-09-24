@@ -23,22 +23,17 @@
         <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="api-tab" data-bs-toggle="tab" data-bs-target="#api" type="button" role="tab">
-              <i class="bi bi-key me-2"></i>API
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab">
-              <i class="bi bi-diagram-3 me-2"></i>Modo de Processamento
+              <i class="bi bi-cpu me-2"></i>Processamento
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="data-tab" data-bs-toggle="tab" data-bs-target="#data" type="button" role="tab">
-              <i class="bi bi-pencil-square me-2"></i>Edição de Dados
+              <i class="bi bi-clipboard-data me-2"></i>Dados
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab">
-              <i class="bi bi-database me-2"></i>Gerenciamento
+              <i class="bi bi-tools me-2"></i>Gerenciamento
             </button>
           </li>
         </ul>
@@ -183,33 +178,20 @@
                 </div>
               </div>
 
-              <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <button type="submit" class="btn btn-primary btn-lg">
-                  <i class="bi bi-check-lg me-2"></i>Salvar Configurações da API
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <!-- Aba Detalhes Avançados -->
-          <div class="tab-pane fade" id="advanced" role="tabpanel">
-            <form id="configAdvancedForm">
-              <div class="row">
-                <!-- Modo de Extração -->
-                <div class="col-md-8 mb-3">
-                  <label for="modoExtracao" class="form-label fw-bold">
-                    <i class="bi bi-diagram-3 me-2"></i>Modo de Extração (padrão)
-                  </label>
-                  <select class="form-select" id="modoExtracao">
-                    <option value="ia" {% if config.processamento.modo_extracao == 'ia' %}selected{% endif %}>Somente IA</option>
-                    <option value="hibrido" {% if config.processamento.modo_extracao == 'hibrido' %}selected{% endif %}>Híbrido (código de barras + IA no que faltar)</option>
-                    <option value="sem_ia" {% if config.processamento.modo_extracao == 'sem_ia' %}selected{% endif %}>Sem IA (só código de barras, custo zero)</option>
-                  </select>
-                  <div class="form-text">
-                    Pode ser trocado a qualquer momento na tela inicial, antes de iniciar o processamento.
-                    O modo "Sem IA" lê o código de barras da própria imagem, sem nenhuma chamada de IA;
-                    o "Híbrido" tenta o código de barras primeiro e só usa IA no que não conseguir ler.
-                  </div>
+              <!-- Modo de Extração -->
+              <div class="mb-4 pt-3 border-top">
+                <label for="modoExtracao" class="form-label fw-bold">
+                  <i class="bi bi-diagram-3 me-2"></i>Modo de Extração (padrão)
+                </label>
+                <select class="form-select" id="modoExtracao">
+                  <option value="ia" {% if config.processamento.modo_extracao == 'ia' %}selected{% endif %}>Somente IA</option>
+                  <option value="hibrido" {% if config.processamento.modo_extracao == 'hibrido' %}selected{% endif %}>Híbrido (código de barras + IA no que faltar)</option>
+                  <option value="sem_ia" {% if config.processamento.modo_extracao == 'sem_ia' %}selected{% endif %}>Sem IA (só código de barras, custo zero)</option>
+                </select>
+                <div class="form-text">
+                  Pode ser trocado a qualquer momento na tela inicial, antes de iniciar o processamento.
+                  O modo "Sem IA" lê o código de barras da própria imagem, sem nenhuma chamada de IA;
+                  o "Híbrido" tenta o código de barras primeiro e só usa IA no que não conseguir ler.
                 </div>
               </div>
 
@@ -229,7 +211,12 @@
               <input type="hidden" id="maxWorkers" value="{{ config.processamento.max_workers }}">
               <input type="hidden" id="requestDelay" value="{{ config.processamento.request_delay }}">
 
-              <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+              <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center pt-3 border-top">
+                <!-- Backup das preferências (sem as chaves de API). Fica aqui, na
+                     aba de configuração, e não na de dados: é configuração. -->
+                <a href="{{ url_for('download_config') }}" class="btn btn-outline-secondary">
+                  <i class="bi bi-download me-2"></i>Baixar backup das configurações
+                </a>
                 <button type="submit" class="btn btn-primary btn-lg">
                   <i class="bi bi-check-lg me-2"></i>Salvar
                 </button>
@@ -237,150 +224,223 @@
             </form>
           </div>
 
-          <!-- Aba Edição de Dados -->
+          <!-- Aba Dados -->
           <div class="tab-pane fade" id="data" role="tabpanel">
-            <div class="text-center py-4">
-              <i class="bi bi-pencil-square display-1 text-success mb-3"></i>
-              <h4>Edição de Dados do Relatório</h4>
-              <p class="text-muted mb-4">
-                Edite produtos, quantidades e códigos de barras para auditoria
-              </p>
-
-              {% if stats.relatorio_existe %}
-              <div class="d-grid gap-2 col-md-6 mx-auto">
-                <a href="{{ url_for('editar_dados') }}" class="btn btn-success btn-lg">
-                  <i class="bi bi-table me-2"></i>Editar Dados do Relatório
+            {% if dados.relatorio.existe %}
+            <!-- Estado do relatório -->
+            <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between mb-4">
+              <div>
+                <h4 class="mb-1">
+                  <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Relatório mestre
+                </h4>
+                <p class="text-muted mb-0">
+                  {{ dados.relatorio.total_itens }} itens
+                  {% if dados.relatorio.atualizado_em %}
+                  &middot; atualizado em {{ dados.relatorio.atualizado_em }}
+                  {% endif %}
+                </p>
+              </div>
+              <div class="d-flex gap-2">
+                <a href="{{ url_for('editar_dados') }}" class="btn btn-success">
+                  <i class="bi bi-pencil-square me-2"></i>Editar dados
                 </a>
-                
                 <button class="btn btn-outline-info" onclick="criarBackup()">
-                  <i class="bi bi-download me-2"></i>Criar Backup
+                  <i class="bi bi-download me-2"></i>Criar backup
                 </button>
+              </div>
+            </div>
 
-                <a href="{{ url_for('download_config') }}" class="btn btn-outline-secondary btn-sm">
-                  <i class="bi bi-gear me-2"></i>Baixar Backup das Configurações
-                </a>
+            <!-- Contagem por categoria -->
+            <div class="stat-strip stat-strip--col mb-4">
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ dados.relatorio.por_categoria.get('Avarias', 0) }}</span>
+                <span class="stat-strip-label">Avarias</span>
               </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ dados.relatorio.por_categoria.get('Uso Interno', 0) }}</span>
+                <span class="stat-strip-label">Uso Interno</span>
+              </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ dados.relatorio.por_categoria.get('Erros de Análise', 0) }}</span>
+                <span class="stat-strip-label">Erros de Análise</span>
+              </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ dados.relatorio.total_itens }}</span>
+                <span class="stat-strip-label">Total de itens</span>
+              </div>
+            </div>
 
-              <div class="mt-4 alert alert-info">
-                <i class="bi bi-info-circle me-2"></i>
-                Você pode editar produtos identificados incorretamente, 
-                corrigir quantidades e ajustar códigos de barras.
+            <div class="alert alert-info mb-0">
+              <i class="bi bi-info-circle me-2"></i>
+              Corrija produtos identificados incorretamente, ajuste quantidades e
+              códigos de barras. As mudanças refletem no relatório e no Histórico.
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i class="bi bi-inbox empty-icon"></i>
+              <p class="empty-title">Nenhum relatório ainda</p>
+              <p class="text-muted">
+                Envie imagens e processe para gerar o relatório mestre. Depois disso,
+                os dados ficam disponíveis aqui para edição.
+              </p>
+              <a href="{{ url_for('upload_page') }}" class="btn btn-primary">
+                <i class="bi bi-cloud-upload me-2"></i>Ir para o upload
+              </a>
+            </div>
+            {% endif %}
+
+            <!-- Contexto do sistema (sempre visível) -->
+            <div class="row g-3 mt-4 pt-3 border-top">
+              <div class="col-6 col-md-3">
+                <span class="text-muted small d-block">Execuções</span>
+                <span class="fs-5">{{ dados.execucoes.total }}</span>
               </div>
-              {% else %}
-              <div class="alert alert-warning col-md-8 mx-auto">
-                <i class="bi bi-exclamation-triangle me-2"></i>
-                Nenhum relatório encontrado. Execute o processamento primeiro.
+              <div class="col-6 col-md-3">
+                <span class="text-muted small d-block">Última execução</span>
+                <span class="fs-6">
+                  {{ dados.execucoes.ultima_em or '—' }}
+                </span>
               </div>
-              {% endif %}
+              <div class="col-6 col-md-3">
+                <span class="text-muted small d-block">Relatórios unificados</span>
+                <span class="fs-5">{{ dados.unificados }}</span>
+              </div>
+              <div class="col-6 col-md-3">
+                <span class="text-muted small d-block">Tokens consumidos</span>
+                <span class="fs-5">{{ '{:,}'.format(dados.tokens.total).replace(',', '.') }}</span>
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <a href="{{ url_for('historico') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-clock-history me-1"></i>Ver histórico completo
+              </a>
+              <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-file-earmark-text me-1"></i>Abrir relatório
+              </a>
             </div>
           </div>
 
           <!-- Aba Gerenciamento -->
           <div class="tab-pane fade" id="manage" role="tabpanel">
-            <div class="row g-3">
-              <div class="col-md-4">
-                <div class="card bg-transparent h-100 border-primary">
-                  <div class="card-body text-center">
-                    <i class="bi bi-arrow-repeat display-3 text-primary mb-3"></i>
-                    <h5>Reprocessar Tudo</h5>
-                    <p class="text-muted small">
-                      Limpa imagens e histórico de processamento juntos, numa ação só —
-                      pronto para enviar e processar do zero (ex.: testar de novo o mesmo lote).
-                      <br /><strong class="text-primary">Não apaga o relatório Excel nem o Histórico.</strong>
-                    </p>
-                    <button class="btn btn-primary clear-data-btn" data-type="reprocessar_tudo">
-                      <i class="bi bi-arrow-repeat me-1"></i>Reprocessar Tudo
-                    </button>
-                  </div>
-                </div>
+            <!-- 1. Estado atual (o que está ocupando espaço e o que existe) -->
+            <h5 class="mb-3"><i class="bi bi-clipboard-data text-primary me-2"></i>Estado do sistema</h5>
+            <div class="stat-strip stat-strip--col mb-2">
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ stats.imagens_total }}</span>
+                <span class="stat-strip-label">Imagens</span>
               </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ stats.imagens_processadas }}</span>
+                <span class="stat-strip-label">Processadas</span>
+              </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ stats.imagens_pendentes }}</span>
+                <span class="stat-strip-label">Na fila</span>
+              </div>
+              <div class="stat-strip-item">
+                <span class="stat-strip-value">{{ stats.tokens_consumidos_hoje }}</span>
+                <span class="stat-strip-label">Tokens hoje</span>
+              </div>
+            </div>
+            <p class="text-muted small">
+              <i class="bi bi-clock me-1"></i>Último processamento: {{ stats.ultimo_processamento }}
+            </p>
 
-              <div class="col-md-4">
-                <div class="card bg-transparent h-100">
-                  <div class="card-body text-center">
-                    <i class="bi bi-file-text display-3 text-warning mb-3"></i>
-                    <h5>Logs do Sistema</h5>
-                    <p class="text-muted small">
-                      Limpar histórico de processamento e tokens
-                    </p>
-                    <button class="btn btn-outline-warning clear-data-btn" data-type="logs">
-                      <i class="bi bi-trash me-1"></i>Limpar Logs
-                    </button>
+            <!-- 2. Manutenção sem perda (não apaga dado de negócio) -->
+            <h5 class="mt-4 pt-3 border-top mb-3">
+              <i class="bi bi-stars text-success me-2"></i>Limpeza segura
+            </h5>
+            <p class="text-muted small">
+              Não removem imagens, relatório nem histórico — só arrumam o que sobra.
+            </p>
+            <div class="stat-list mb-3">
+              <div class="stat-list-row">
+                <dt>
+                  <i class="bi bi-archive"></i>Exportações antigas
+                  <div class="text-muted" style="font-size: 0.8rem;">
+                    Mantém as 30 mais recentes de cada tipo em resultados/
                   </div>
-                </div>
+                </dt>
+                <dd>
+                  <button class="btn btn-outline-secondary btn-sm clear-data-btn" data-type="exportacoes">
+                    <i class="bi bi-trash me-1"></i>Limpar
+                  </button>
+                </dd>
               </div>
-              
-              <div class="col-md-4">
-                <div class="card bg-transparent h-100">
-                  <div class="card-body text-center">
-                    <i class="bi bi-file-earmark-excel display-3 text-danger mb-3"></i>
-                    <h5>Relatório Excel</h5>
-                    <p class="text-muted small">
-                      Remover relatório para regeneração
-                    </p>
-                    <button class="btn btn-outline-danger clear-data-btn" data-type="relatorio">
-                      <i class="bi bi-trash me-1"></i>Remover Relatório
-                    </button>
+              <div class="stat-list-row">
+                <dt>
+                  <i class="bi bi-file-text"></i>Logs do sistema
+                  <div class="text-muted" style="font-size: 0.8rem;">
+                    Histórico de processamento e consumo de tokens
                   </div>
-                </div>
-              </div>
-              
-              <div class="col-md-4">
-                <div class="card bg-transparent h-100">
-                  <div class="card-body text-center">
-                    <i class="bi bi-images display-3 text-info mb-3"></i>
-                    <h5>Imagens</h5>
-                    <p class="text-muted small">
-                      Remover todas as imagens carregadas
-                      <br /><strong class="text-warning">Atenção: quebra o "Ver Imagem" de itens antigos no Histórico.</strong>
-                    </p>
-                    <button class="btn btn-outline-info clear-data-btn" data-type="imagens">
-                      <i class="bi bi-trash me-1"></i>Limpar Imagens
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="col-md-4">
-                <div class="card bg-transparent h-100">
-                  <div class="card-body text-center">
-                    <i class="bi bi-archive display-3 text-secondary mb-3"></i>
-                    <h5>Exportações Antigas</h5>
-                    <p class="text-muted small">
-                      Mantém só as 30 exportações mais recentes de cada tipo em resultados/
-                    </p>
-                    <button class="btn btn-outline-secondary clear-data-btn" data-type="exportacoes">
-                      <i class="bi bi-trash me-1"></i>Limpar Exportações Antigas
-                    </button>
-                  </div>
-                </div>
+                </dt>
+                <dd>
+                  <button class="btn btn-outline-secondary btn-sm clear-data-btn" data-type="logs">
+                    <i class="bi bi-trash me-1"></i>Limpar
+                  </button>
+                </dd>
               </div>
             </div>
 
-            <div class="row mt-4">
-              <div class="col-12">
-                <div class="alert alert-info">
-                  <h6 class="alert-heading">
-                    <i class="bi bi-bar-chart me-2"></i>Estatísticas do Sistema
-                  </h6>
-                  <hr>
-                  <div class="row">
-                    <div class="col-md-3">
-                      <strong>Imagens Total:</strong><br>
-                      <span class="fs-4">{{ stats.imagens_total }}</span>
-                    </div>
-                    <div class="col-md-3">
-                      <strong>Processadas:</strong><br>
-                      <span class="fs-4">{{ stats.imagens_processadas }}</span>
-                    </div>
-                    <div class="col-md-3">
-                      <strong>Tokens Hoje:</strong><br>
-                      <span class="fs-4">{{ stats.tokens_consumidos_hoje }}</span>
-                    </div>
-                    <div class="col-md-3">
-                      <strong>Último Processamento:</strong><br>
-                      <span class="small">{{ stats.ultimo_processamento }}</span>
-                    </div>
+            <!-- 3. Ações destrutivas (apagam dado de negócio) -->
+            <h5 class="mt-4 pt-3 border-top mb-3">
+              <i class="bi bi-exclamation-triangle text-danger me-2"></i>Ações destrutivas
+            </h5>
+            <div class="alert alert-warning small mb-3">
+              <i class="bi bi-info-circle me-2"></i>
+              Estas ações <strong>apagam dados</strong> e não podem ser desfeitas.
+              O Histórico de execuções é preservado em todas elas — só o link da
+              imagem é que pode deixar de abrir.
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <div class="card bg-transparent h-100 border-danger">
+                  <div class="card-body">
+                    <h6 class="card-title mb-2">
+                      <i class="bi bi-images text-danger me-2"></i>Limpar imagens
+                    </h6>
+                    <p class="text-muted small mb-3">
+                      Remove todas as imagens carregadas. O botão "Ver Imagem" de
+                      itens antigos no Histórico deixa de funcionar.
+                    </p>
+                    <button class="btn btn-outline-danger btn-sm w-100 clear-data-btn" data-type="imagens">
+                      <i class="bi bi-trash me-1"></i>Limpar imagens
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card bg-transparent h-100 border-danger">
+                  <div class="card-body">
+                    <h6 class="card-title mb-2">
+                      <i class="bi bi-file-earmark-excel text-danger me-2"></i>Remover relatório
+                    </h6>
+                    <p class="text-muted small mb-3">
+                      Apaga o Excel mestre para regeneração. Os itens do
+                      Histórico continuam salvos no banco.
+                    </p>
+                    <button class="btn btn-outline-danger btn-sm w-100 clear-data-btn" data-type="relatorio">
+                      <i class="bi bi-trash me-1"></i>Remover relatório
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card bg-transparent h-100 border-danger">
+                  <div class="card-body">
+                    <h6 class="card-title mb-2">
+                      <i class="bi bi-arrow-repeat text-danger me-2"></i>Reprocessar tudo
+                    </h6>
+                    <p class="text-muted small mb-3">
+                      Limpa imagens <em>e</em> histórico de execuções numa ação só —
+                      para testar o mesmo lote do zero.
+                    </p>
+                    <button class="btn btn-outline-danger btn-sm w-100 clear-data-btn" data-type="reprocessar_tudo">
+                      <i class="bi bi-arrow-repeat me-1"></i>Reprocessar tudo
+                    </button>
                   </div>
                 </div>
               </div>

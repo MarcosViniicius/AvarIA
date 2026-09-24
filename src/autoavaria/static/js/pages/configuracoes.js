@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const apiProvider = document.getElementById('apiProvider');
   const apiModel = document.getElementById('apiModel');
   const configApiForm = document.getElementById('configApiForm');
-  const configAdvancedForm = document.getElementById('configAdvancedForm');
 
   // Atualizar modelos quando provedor mudar - busca dinâmica via API
   async function atualizarModelos() {
@@ -134,10 +133,10 @@ document.addEventListener('DOMContentLoaded', function() {
   atualizarModelos();
   toggleApiFields();
 
-  // Salvar configurações da API
+  // Salvar configurações (API + modo de extração num formulário só)
   configApiForm.addEventListener('submit', function(e) {
     e.preventDefault();
-    
+
     const formData = {
       api: {
         provider: apiProvider.value,
@@ -146,17 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
         openai_api_key: document.getElementById('openaiApiKey').value,
         anthropic_api_key: document.getElementById('anthropicApiKey').value,
         openrouter_api_key: document.getElementById('openrouterApiKey').value
-      }
-    };
-
-    salvarConfiguracao(formData);
-  });
-
-  // Salvar configurações avançadas
-  configAdvancedForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = {
+      },
       processamento: {
         modo_extracao: document.getElementById('modoExtracao').value,
         temperatura: parseFloat(document.getElementById('temperatura').value),

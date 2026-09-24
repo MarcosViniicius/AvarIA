@@ -1,6 +1,27 @@
 /* responsive.css - todo o CSS condicional junto: tabelas empilhadas
    no mobile, media queries gerais e impressao/movimento reduzido.
    Carregado por ultimo no nucleo para manter a precedencia. */
+
+/* Faixa de metricas (.stat-strip): em telas estreitas vira 2x2 para os
+   rotulos nao quebrarem. A base esta em components.css. */
+@media (max-width: 767.98px) {
+  .stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat-strip-item {
+    padding: 0.7rem 0.85rem;
+  }
+  .stat-strip:not(.stat-strip--col) .stat-strip-item:nth-child(odd) {
+    border-left: none;
+  }
+  .stat-strip:not(.stat-strip--col) .stat-strip-item:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+  .stat-strip-value {
+    font-size: 1.2rem;
+  }
+}
+
 /* Tabelas empilhadas no mobile (.table-stack): cada linha vira um card com o
    rótulo da coluna (data-label) acima do valor. O data-label é preenchido por
    setupResponsiveTables() em main.js a partir do <thead>, então os templates
