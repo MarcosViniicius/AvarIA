@@ -102,6 +102,25 @@ CREATE TABLE IF NOT EXISTS catalogo_revisoes (
     motivo TEXT NOT NULL,
     criado_em TEXT NOT NULL
 );
+
+-- Acervo de arquivos: metadados no banco, bytes no disco (ver
+-- services/arquivos.py). O nome FÍSICO é aleatório (uuid) para nunca colidir;
+-- o nome que o usuário vê é `nome_original`. `hash_sha256` é o hash do
+-- conteúdo ORIGINAL (nunca da versão recomprimida) e é a chave de dedup.
+CREATE TABLE IF NOT EXISTS arquivos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_original TEXT NOT NULL,
+    nome_fisico TEXT NOT NULL UNIQUE,
+    pasta TEXT NOT NULL DEFAULT 'pendentes',
+    extensao TEXT,
+    tipo_mime TEXT,
+    tamanho INTEGER NOT NULL DEFAULT 0,
+    hash_sha256 TEXT NOT NULL,
+    criado_em TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_arquivos_hash ON arquivos(hash_sha256);
+CREATE INDEX IF NOT EXISTS idx_arquivos_nome_original ON arquivos(nome_original);
+CREATE INDEX IF NOT EXISTS idx_arquivos_pasta ON arquivos(pasta);
 """
 
 
@@ -493,6 +512,41 @@ def registrar_relatorio_unificado(
                 origem,
             ),
         )
+
+
+def registrar_unificado_gerado(
+    *,
+    nome_arquivo: str,
+    formato: str,
+    secoes: Optional[List[str]] = None,
+    total_itens: int = 0,
+    execucao_id: Optional[int] = None,
+    contagem_por_secao: Optional[Dict[str, Any]] = None,
+    origem: str = "app",
+) -> None:
+    """Registra um relatório unificado recém-gerado, num formato único.
+
+    Antes, cada rota montava o ``resumo`` do seu jeito (uma mandava só
+    ``execucao_id``, outra nada), e a tela de Histórico não tinha como
+    distinguir um unificado global de um escopado a uma execução. Aqui o
+    formato é sempre o mesmo, venha a chamada do escopo global
+    (``/api/unificar_relatorio``) ou do escopo por execução
+    (``/historico/execucao/<id>/unificar``).
+    """
+    resumo: Dict[str, Any] = {"escopo": "execucao" if execucao_id else "global"}
+    if execucao_id is not None:
+        resumo["execucao_id"] = execucao_id
+    if contagem_por_secao:
+        resumo["contagem_por_secao"] = contagem_por_secao
+
+    registrar_relatorio_unificado(
+        arquivo_xlsx=nome_arquivo if formato == "xlsx" else None,
+        arquivo_txt=nome_arquivo if formato == "txt" else None,
+        secoes=secoes,
+        total_itens=total_itens,
+        resumo=resumo,
+        origem=origem,
+    )
 
 
 def listar_relatorios_unificados(limite: int = 100) -> List[Dict[str, Any]]:

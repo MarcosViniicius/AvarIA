@@ -299,7 +299,8 @@ def popular_do_historico() -> Dict[str, int]:
     analisados, e cada um com código de barras vira uma entrada de catálogo.
     Idempotente — pode rodar quantas vezes quiser.
     """
-    inseridos_ean = 0
+    agora = db._now()
+    candidatos = []
     with db.get_connection() as conn:
         linhas = conn.execute(
             """SELECT produto, marca, codigo_barras, categoria
@@ -315,14 +316,29 @@ def popular_do_historico() -> Dict[str, int]:
 
         if not ean13_valido(codigo):
             continue
-        if registrar(
-            codigo=codigo,
-            produto=linha["produto"] or "",
-            marca=linha["marca"] or "",
-            categoria_padrao=linha["categoria"] or "",
-            tipo="ean",
-            origem="historico",
-        ):
-            inseridos_ean += 1
+        candidatos.append((
+            codigo,
+            "ean",
+            _limpo(linha["produto"]),
+            _limpo(linha["marca"]),
+            None,
+            _limpo(linha["categoria"]),
+            "historico",
+            agora,
+        ))
+
+    # Backfill idempotente: não incrementar vezes_visto nem reescrever a data
+    # do catálogo a cada inicialização. A origem manual/IA existente mantém
+    # precedência, e o INSERT OR IGNORE também colapsa códigos repetidos no
+    # próprio histórico em uma única gravação.
+    with db.get_connection() as conn:
+        cursor = conn.executemany(
+            """INSERT OR IGNORE INTO catalogo_produtos
+               (codigo, tipo, produto, marca, preco_kg, categoria_padrao,
+                origem, vezes_visto, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            candidatos,
+        )
+        inseridos_ean = cursor.rowcount
 
     return {"ean": inseridos_ean, "total": contar().get("total", 0)}

@@ -12,9 +12,29 @@ from flask import jsonify, request, send_file, url_for
 from .blueprint import web_bp as app
 from .context import BASE_PATH
 from ..services import db as db_service
-from ..services.export_service import escrever_txt_compacto, escrever_xlsx, filtrar_colunas
+from ..services.export_service import (
+    escrever_txt_compacto,
+    escrever_xlsx,
+    filtrar_colunas,
+    renderizar_txt_compacto,
+)
 from ..services.relatorio_view import _construir_dados_relatorio
-from ..services.unification import unificar_itens_avarias, unificar_itens_uso_interno
+from ..services.unification import (
+    renderizar_secciones_como_texto,
+    unificar_itens_avarias,
+    unificar_itens_uso_interno,
+)
+
+
+def _sem_colunas_internas(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove colunas que existem só para a interface antes de unificar.
+
+    `id_linha` (ver services/relatorio_view.py) não é dado do produto: além de
+    não pertencer ao relatório de auditoria, ao consolidar um grupo ela fixava
+    o id de um item qualquer do grupo como se fosse o do produto unificado.
+    """
+    internas = [c for c in ("id_linha",) if c in df.columns]
+    return df.drop(columns=internas) if internas else df
 
 
 def _sheets_da_ultima_execucao():
@@ -40,15 +60,18 @@ def _sheets_da_ultima_execucao():
     }
 
 
-def processar_unificacao_completa(secoes_filtro=None, colunas_filtro=None):
-    """Processa todo o relatório aplicando unificação e gerando planilha de auditoria.
+def processar_unificacao_completa(secoes_filtro=None, colunas_filtro=None, return_contenido=False):
+    """Processa todo el relatório aplicando unificação e generando planilha de auditoria.
 
     Args:
-        secoes_filtro: Lista de seções para processar (None = todas)
+        secsões_filtro: Lista de seções para processar (None = todas)
         colunas_filtro: Dicionário {secao: [colunas]} para filtrar colunas (None = todas)
+        return_contenido: se True, no retorno incluye un 4º elemento com el
+            contenido textual de lo que se generó (para mostrar/copiar en pantalla).
 
     Returns:
-        tuple: (sucesso, mensagem, caminho_arquivo_gerado)
+        tuple: (sucesso, mensaje, camino_archivo_gerado) o
+               (sucesso, mensaje, camino_archivo_gerado, contenido_texto)
     """
     try:
         sheets = _sheets_da_ultima_execucao()
@@ -85,17 +108,22 @@ def processar_unificacao_completa(secoes_filtro=None, colunas_filtro=None):
                         coluna_produto = col
 
             if coluna_produto and "avaria" in sheet_lower:
-                df_final, _ = unificar_itens_avarias(df)
+                df_final, _ = unificar_itens_avarias(_sem_colunas_internas(df))
             elif coluna_produto and "uso interno" in sheet_lower:
-                df_final, _ = unificar_itens_uso_interno(df)
+                df_final, _ = unificar_itens_uso_interno(_sem_colunas_internas(df))
             else:
                 df_final = df
 
             colunas_secao = (colunas_filtro or {}).get(sheet_name)
             secoes_para_escrever[sheet_name] = filtrar_colunas(df_final, colunas_secao)
 
+        if not secoes_para_escrever or all(df.empty for df in secoes_para_escrever.values()):
+            return False, "Nada para unificar: as seções selecionadas estão vazias.", None
+
         escrever_xlsx(arquivo_unificado, secoes_para_escrever)
 
+        if return_contenido:
+            return True, f"Relatório unificado gerado com sucesso", arquivo_unificado, renderizar_secciones_como_texto(secoes_para_escrever)
         return True, f"Relatório unificado gerado com sucesso", arquivo_unificado
 
     except Exception as e:
@@ -105,15 +133,18 @@ def processar_unificacao_completa(secoes_filtro=None, colunas_filtro=None):
         return False, f"Erro ao processar unificação: {str(e)}", None
 
 
-def processar_unificacao_txt(secoes_filtro=None, colunas_filtro=None):
-    """Processa todo o relatório aplicando unificação e gerando arquivo TXT.
+def processar_unificacao_txt(secoes_filtro=None, colunas_filtro=None, return_contenido=False):
+    """Processa todo o relatório aplicando unificação e gera arquivo TXT.
 
     Args:
-        secoes_filtro: Lista de seções para processar (None = todas)
+        secosões_filtro: Lista de seções para processar (None = todas)
         colunas_filtro: Dicionário {secao: [colunas]} para filtrar colunas (None = todas)
+        return_contenido: se True, devuelve un 4º elemento com el contenido
+            textual de lo que se generó (para mostrar/copiar en pantalla).
 
     Returns:
-        tuple: (sucesso, mensagem, caminho_arquivo_gerado)
+        tuple: (sucesso, mensagem, camino_archivo_gerado) o
+               (sucesso, mensagem, camino_archivo_gerado, contenido_texto)
     """
     try:
         sheets = _sheets_da_ultima_execucao()
@@ -152,8 +183,17 @@ def processar_unificacao_txt(secoes_filtro=None, colunas_filtro=None):
             colunas_secao = (colunas_filtro or {}).get(sheet_name)
             secoes_para_escrever[sheet_name] = filtrar_colunas(df_unificado, colunas_secao)
 
-        escrever_txt_compacto(arquivo_unificado, "RELATÓRIO UNIFICADO DE AVARIAS E USO INTERNO", secoes_para_escrever)
+        if not secoes_para_escrever:
+            return False, (
+                "Nada para unificar em TXT: selecione Avarias e/ou Uso Interno "
+                "com coluna de produto. A seção de erros não entra no formato compacto."
+            ), None
 
+        titulo = "RELATÓRIO UNIFICADO DE AVARIAS E USO INTERNO"
+        escrever_txt_compacto(arquivo_unificado, titulo, secoes_para_escrever)
+
+        if return_contenido:
+            return True, "Relatório unificado TXT gerado com sucesso", arquivo_unificado, renderizar_txt_compacto(titulo, secoes_para_escrever)
         return True, f"Relatório unificado TXT gerado com sucesso", arquivo_unificado
 
     except Exception as e:
@@ -191,17 +231,24 @@ def api_unificar_relatorio():
 
         # Processar conforme o formato
         if formato == "txt":
-            sucesso, mensagem, arquivo_gerado = processar_unificacao_txt(secoes_filtro, colunas_filtro)
+            resultado = processar_unificacao_txt(secoes_filtro, colunas_filtro, return_contenido=True)
         else:
-            sucesso, mensagem, arquivo_gerado = processar_unificacao_completa(secoes_filtro, colunas_filtro)
+            resultado = processar_unificacao_completa(secoes_filtro, colunas_filtro, return_contenido=True)
+
+        # En caso de erro, estas funciones devuelven 3 elementos (sin contenido).
+        if len(resultado) == 4:
+            sucesso, mensagem, arquivo_gerado, contenido = resultado
+        else:
+            sucesso, mensagem, arquivo_gerado = resultado
+            contenido = ""
 
         if sucesso:
             # Retornar link para download
             filename = os.path.basename(arquivo_gerado)
 
-            db_service.registrar_relatorio_unificado(
-                arquivo_xlsx=filename if formato == "xlsx" else None,
-                arquivo_txt=filename if formato == "txt" else None,
+            db_service.registrar_unificado_gerado(
+                nome_arquivo=filename,
+                formato=formato,
                 secoes=secoes_filtro,
             )
 
@@ -210,7 +257,8 @@ def api_unificar_relatorio():
                 "message": mensagem,
                 "download_url": url_for("download_relatorio_unificado", filename=filename),
                 "filename": filename,
-                "formato": formato
+                "formato": formato,
+                "contenido": contenido or "",
             })
         else:
             return jsonify({

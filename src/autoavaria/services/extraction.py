@@ -5,7 +5,7 @@ import tarfile
 import gzip
 import shutil
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Optional
 # py7zr é opcional - se não estiver disponível, arquivos .7z não serão suportados
 try:
@@ -38,7 +38,13 @@ def _hash_arquivo(caminho) -> str:
         return _hash(f.read())
 
 
-def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> Optional[str]:
+def nome_para_gravar(
+    pastas,
+    nome: str,
+    dados: bytes,
+    forcar: bool = False,
+    nomes_processados=None,
+) -> Optional[str]:
     """Decide o nome com que gravar `dados` (conteúdo do arquivo) em
     `pastas[0]` (a primeira pasta é sempre onde o arquivo será gravado; as
     demais entram só como pastas adicionais a checar por colisão de nome).
@@ -49,6 +55,18 @@ def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> O
     mesmo nome de uma já arquivada seria salvo sem sufixo e, como esse nome
     já está no log de processados, seria ignorado como "já processado" sem
     nunca ser analisado.
+
+    `nomes_processados`: conjunto (ou iterável) de nomes que JÁ constam no
+    log de processados (log_mestre.txt). A imagem arquivada é RECOMPRIMIDA
+    ao ser movida para imagens_processadas/ (ver image_archive.py), então o
+    hash do arquivo guardado difere do original: comparar conteúdo para
+    decidir "é o mesmo arquivo?" falha justamente no caso mais comum -
+    reenviar o mesmo lote depois de processado. Como o pipeline identifica
+    "já processado" pelo NOME (não pelo conteúdo), um nome nesta lista nunca
+    deve ganhar sufixo: o sufixo criaria um nome inédito (`IMG-x_2.jpg`) que
+    entra na fila e é analisado (e cobrado) de novo. Sem `forcar`, devolve
+    None (é o mesmo arquivo já processado); com `forcar=True` o sufixo é
+    aplicado de propósito, porque o usuário pediu para reprocessar.
 
     - Sem colisão de nome em nenhuma pasta: devolve `nome` como está.
     - Colisão, mas o CONTEÚDO já existente é byte-a-byte igual a `dados`
@@ -61,15 +79,23 @@ def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> O
     - Colisão com conteúdo DIFERENTE: devolve um nome com sufixo numérico,
       preservando os arquivos sem sobrescrever nada.
 
-    `forcar=True` desativa a checagem de "mesmo conteúdo" - toda colisão de
-    nome ganha sufixo, mesmo que o conteúdo já exista. Usado pelo checkbox
-    "Forçar reprocessamento" da tela de Upload, para quando o usuário quer
-    reanalisar de propósito um lote já enviado antes.
+    `forcar=True` desativa a checagem de "mesmo conteúdo" (e a de
+    `nomes_processados`) - toda colisão de nome ganha sufixo, mesmo que o
+    conteúdo já exista. Usado pelo checkbox "Forçar reprocessamento" da tela
+    de Upload, para quando o usuário quer reanalisar de propósito um lote já
+    enviado antes.
 
     Usado tanto no upload direto (routes/upload.py) quanto na extração de
     arquivos compactados abaixo.
     """
     lista_pastas = [Path(pastas)] if isinstance(pastas, (str, Path)) else [Path(p) for p in pastas]
+    processados = set() if nomes_processados is None else set(nomes_processados)
+
+    # Nome já processado (está no log): o arquivo em disco pode diferir byte a
+    # byte do original por causa da recompressão do arquivamento, mas é o
+    # MESMO arquivo aos olhos do pipeline. Sem forcar, não grava nada.
+    if not forcar and nome in processados:
+        return None
 
     base, extensao = os.path.splitext(nome)
     candidato_nome = nome
@@ -91,7 +117,7 @@ def nome_para_gravar(pastas, nome: str, dados: bytes, forcar: bool = False) -> O
         contador += 1
 
 
-def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_arquivo=None, forcar: bool = False) -> None:
+def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_arquivo=None, forcar: bool = False, nomes_processados=None) -> None:
     """Grava um membro de arquivo compactado em `pasta_destino`, usando
     `nome_para_gravar` para nunca sobrescrever um arquivo diferente, e nunca
     duplicar um arquivo idêntico. `dados_origem` é um file-like aberto para
@@ -102,14 +128,41 @@ def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_ar
     services/image_archive.py); sem checá-la aqui, extrair de novo um arquivo
     compactado com um nome que já foi processado e arquivado poderia salvar
     uma imagem diferente sem sufixo e ela ser ignorada como "já processada".
+
+    `nomes_processados`, se informado, é repassado a `nome_para_gravar`: os
+    nomes ali já foram analisados e não devem gerar sufixo (ver docstring de
+    `nome_para_gravar`).
     """
-    caminho_relativo = Path(caminho_relativo)
-    pasta_membro = Path(pasta_destino) / caminho_relativo.parent
+    nome_membro = str(caminho_relativo)
+    caminho_posix = PurePosixPath(nome_membro.replace("\\", "/"))
+    caminho_windows = PureWindowsPath(nome_membro)
+    if (
+        caminho_posix.is_absolute()
+        or caminho_windows.is_absolute()
+        or caminho_windows.drive
+        or ".." in caminho_posix.parts
+        or not caminho_posix.parts
+    ):
+        raise ValueError(f"Caminho inseguro dentro do arquivo compactado: {nome_membro}")
+
+    caminho_relativo = Path(*[parte for parte in caminho_posix.parts if parte not in ("", ".")])
+    raiz_destino = Path(pasta_destino).resolve()
+    pasta_membro = (raiz_destino / caminho_relativo.parent).resolve()
+    destino_membro = (pasta_membro / caminho_relativo.name).resolve()
+    try:
+        pasta_membro.relative_to(raiz_destino)
+        destino_membro.relative_to(raiz_destino)
+    except ValueError as e:
+        raise ValueError(f"Caminho escapa da pasta de destino: {nome_membro}") from e
+
     pasta_membro.mkdir(parents=True, exist_ok=True)
     with dados_origem as entrada:
         dados = entrada.read()
     pastas_colisao = [pasta_membro, pasta_arquivo] if pasta_arquivo else [pasta_membro]
-    nome_final = nome_para_gravar(pastas_colisao, caminho_relativo.name, dados, forcar=forcar)
+    nome_final = nome_para_gravar(
+        pastas_colisao, caminho_relativo.name, dados,
+        forcar=forcar, nomes_processados=nomes_processados,
+    )
     if nome_final is None:
         return  # conteúdo idêntico já extraído antes - não duplicar
     with open(pasta_membro / nome_final, "wb") as saida:
@@ -117,7 +170,7 @@ def _extrair_membro(dados_origem, caminho_relativo: str, pasta_destino, pasta_ar
 
 
 class ExtratorArquivos:
-    def __init__(self, pasta_origem="imagens_para_analisar", pasta_destino=None, pasta_arquivo=None, forcar=False):
+    def __init__(self, pasta_origem="imagens_para_analisar", pasta_destino=None, pasta_arquivo=None, forcar=False, nomes_processados=None):
         """
         Inicializa o extrator de arquivos.
 
@@ -132,11 +185,16 @@ class ExtratorArquivos:
                 toda colisão de nome ganha sufixo numérico (ver
                 `nome_para_gravar`). Usado para reprocessar de propósito um
                 lote já enviado antes.
+            nomes_processados: conjunto de nomes já analisados (log_mestre.txt).
+                Um membro com um desses nomes não ganha sufixo - sem isso,
+                reenviar um ZIP já processado criaria `IMG-x_2.jpg` e o item
+                seria analisado (e cobrado) de novo. Opcional.
         """
         self.pasta_origem = Path(pasta_origem)
         self.pasta_destino = Path(pasta_destino) if pasta_destino else self.pasta_origem
         self.pasta_arquivo = Path(pasta_arquivo) if pasta_arquivo else None
         self.forcar = forcar
+        self.nomes_processados = set(nomes_processados) if nomes_processados else set()
 
         # Formatos suportados e suas respectivas funções de extração
         self.formatos_suportados = {
@@ -179,7 +237,7 @@ class ExtratorArquivos:
                 for info in zip_ref.infolist():
                     if info.is_dir():
                         continue
-                    _extrair_membro(zip_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                    _extrair_membro(zip_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair ZIP {arquivo}: {e}")
@@ -195,7 +253,7 @@ class ExtratorArquivos:
                 for info in rar_ref.infolist():
                     if info.is_dir():
                         continue
-                    _extrair_membro(rar_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                    _extrair_membro(rar_ref.open(info), info.filename, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair RAR {arquivo}: {e}")
@@ -209,7 +267,7 @@ class ExtratorArquivos:
         try:
             with py7zr.SevenZipFile(arquivo, mode="r") as z:
                 for nome_membro, stream in z.readall().items():
-                    _extrair_membro(stream, nome_membro, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                    _extrair_membro(stream, nome_membro, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair 7Z {arquivo}: {e}")
@@ -236,7 +294,7 @@ class ExtratorArquivos:
                     origem = tar_ref.extractfile(membro)
                     if origem is None:
                         continue
-                    _extrair_membro(origem, membro.name, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                    _extrair_membro(origem, membro.name, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair TAR ({modo}) {arquivo}: {e}")
@@ -247,7 +305,7 @@ class ExtratorArquivos:
         try:
             nome_arquivo = Path(arquivo).stem
             with gzip.open(arquivo, "rb") as f_in:
-                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair GZ {arquivo}: {e}")
@@ -260,7 +318,7 @@ class ExtratorArquivos:
 
             nome_arquivo = Path(arquivo).stem
             with bz2.open(arquivo, "rb") as f_in:
-                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar)
+                _extrair_membro(f_in, nome_arquivo, pasta_destino, self.pasta_arquivo, forcar=self.forcar, nomes_processados=self.nomes_processados)
             return True
         except Exception as e:
             logger.error(f"Erro ao extrair BZ2 {arquivo}: {e}")

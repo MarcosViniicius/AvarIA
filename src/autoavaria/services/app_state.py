@@ -23,6 +23,7 @@ from ..core.paths import CONFIG_FILE
 processamento_ativo = False
 processamento_cancelado = False
 progresso_atual = {"progresso": 0, "status": "Aguardando", "logs": []}
+processamento_lock = threading.Lock()
 
 # Buffer de logs em tempo real
 logs_aplicacao_buffer = []

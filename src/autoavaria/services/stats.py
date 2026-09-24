@@ -17,12 +17,14 @@ from ..core.paths import (
     LOG_PROCESSADOS_FILE as LOG_PROCESSADOS_FILE_PATH,
     LOG_CONSUMO_FILE as LOG_CONSUMO_FILE_PATH,
     ARQUIVO_SAIDA_EXCEL as ARQUIVO_SAIDA_EXCEL_PATH,
+    ARCHIVE_FOLDER as ARCHIVE_FOLDER_PATH,
 )
 
 DIRETORIO_IMAGENS = str(UPLOAD_FOLDER_PATH)
 LOG_PROCESSADOS_FILE = str(LOG_PROCESSADOS_FILE_PATH)
 LOG_CONSUMO_FILE = str(LOG_CONSUMO_FILE_PATH)
 ARQUIVO_SAIDA_EXCEL = str(ARQUIVO_SAIDA_EXCEL_PATH)
+ARCHIVE_FOLDER = str(ARCHIVE_FOLDER_PATH)
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
 
 
@@ -61,22 +63,30 @@ def obter_estatisticas():
     }
 
     try:
-        # Imagens realmente presentes na pasta agora.
-        imagens_na_pasta = []
+        # Imagens presentes tanto nas pendentes quanto no arquivo permanente.
+        # O pipeline move para ARCHIVE_FOLDER cada imagem analisada com sucesso;
+        # olhar só UPLOAD_FOLDER fazia o Dashboard mostrar zero processadas.
+        imagens_pendentes_na_pasta = []
         if os.path.exists(DIRETORIO_IMAGENS):
-            imagens_na_pasta = [
+            imagens_pendentes_na_pasta = [
                 f for f in os.listdir(DIRETORIO_IMAGENS) if f.lower().endswith(EXTENSOES_IMAGEM)
             ]
-        stats["imagens_total"] = len(imagens_na_pasta)
+        imagens_arquivadas = []
+        if os.path.exists(ARCHIVE_FOLDER):
+            imagens_arquivadas = [
+                f for f in os.listdir(ARCHIVE_FOLDER) if f.lower().endswith(EXTENSOES_IMAGEM)
+            ]
+        imagens_conhecidas = set(imagens_pendentes_na_pasta) | set(imagens_arquivadas)
+        stats["imagens_total"] = len(imagens_conhecidas)
 
-        # "Processadas" é a INTERSEÇÃO entre o que está na pasta agora e o
-        # que o log diz já ter processado - nunca o tamanho bruto do log.
-        # Sem isso, apagar imagens (ex.: "Limpar Imagens" em Configurações,
-        # que não mexe no log) deixava processadas > total, um número sem
-        # sentido no dashboard.
+        # Não contar nomes antigos do log cujos arquivos já foram removidos.
         processadas_no_log = carregar_logs_processados()
-        stats["imagens_processadas"] = sum(1 for f in imagens_na_pasta if f in processadas_no_log)
-        stats["imagens_pendentes"] = stats["imagens_total"] - stats["imagens_processadas"]
+        stats["imagens_processadas"] = sum(
+            1 for f in imagens_conhecidas if f in processadas_no_log or f in imagens_arquivadas
+        )
+        stats["imagens_pendentes"] = sum(
+            1 for f in imagens_pendentes_na_pasta if f not in processadas_no_log
+        )
 
         # Último processamento - cache por arquivo
         if os.path.exists(LOG_PROCESSADOS_FILE):

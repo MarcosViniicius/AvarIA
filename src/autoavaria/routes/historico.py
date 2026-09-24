@@ -9,7 +9,7 @@ já existe, sem duplicar dados.
 
 import threading
 
-from flask import abort, jsonify, render_template, request, send_file
+from flask import abort, jsonify, render_template, request, send_file, url_for
 
 from ..core.paths import RESULTADOS_DIR
 from ..services import app_state
@@ -52,12 +52,14 @@ def historico_execucao(run_id):
     versoes = db_service.listar_versoes(raiz_execucao_id)
     eh_versao_mais_recente = not versoes or execucao["versao"] == max(v["versao"] for v in versoes)
     dados = _construir_dados_relatorio(execucao["itens"])
+    origem = request.args.get("origem", "historico")
     return render_template(
         "historico_execucao.html",
         execucao=execucao,
         dados=dados,
         versoes=versoes,
         eh_versao_mais_recente=eh_versao_mais_recente,
+        origem=origem,
     )
 
 
@@ -205,21 +207,25 @@ def historico_unificar(run_id):
         return jsonify({"success": False, "message": "Formato inválido. Use 'xlsx' ou 'txt'."}), 400
 
     dados = _construir_dados_relatorio(execucao["itens"])
-    nome_arquivo, total_itens = execucao_export.gerar_unificado_execucao(run_id, dados, formato)
+    nome_arquivo, total_itens, contenido = execucao_export.gerar_unificado_execucao(
+        run_id, dados, formato, return_contenido=True
+    )
 
-    db_service.registrar_relatorio_unificado(
-        arquivo_xlsx=nome_arquivo if formato == "xlsx" else None,
-        arquivo_txt=nome_arquivo if formato == "txt" else None,
+    db_service.registrar_unificado_gerado(
+        nome_arquivo=nome_arquivo,
+        formato=formato,
         total_itens=total_itens,
-        resumo={"execucao_id": run_id},
+        execucao_id=run_id,
+        contagem_por_secao={nome: len(sec.get("dados", [])) for nome, sec in dados.items()},
     )
 
     return jsonify({
         "success": True,
         "message": "Relatório unificado gerado com sucesso",
-        "download_url": f"/download_relatorio_unificado/{nome_arquivo}",
+        "download_url": url_for("download_relatorio_unificado", filename=nome_arquivo),
         "filename": nome_arquivo,
         "formato": formato,
+        "contenido": contenido or "",
     })
 
 
@@ -232,7 +238,13 @@ def historico_unificar(run_id):
 
 @app.route("/historico/execucao/<int:run_id>/reanalisar", methods=["POST"])
 def historico_reanalisar(run_id):
-    """Reanalisa todas as imagens desta execução, criando uma nova versão."""
+    """Reanalisa imagens desta execução, criando uma nova versão.
+
+    Corpo JSON opcional para reanálise seletiva (um tipo, vários ou todos):
+    {"categorias": ["Avarias", ...], "item_ids": [12, ...]}. Sem corpo (ou
+    vazio), reanalisa tudo — comportamento original. `item_ids` (ids do
+    banco) tem precedência sobre `categorias`.
+    """
     execucao = db_service.obter_execucao(run_id)
     if not execucao:
         abort(404)
@@ -246,14 +258,31 @@ def historico_reanalisar(run_id):
             "message": "Só é possível reanalisar a versão mais recente desta análise",
         }), 400
 
-    if app_state.processamento_ativo:
-        return jsonify({"success": False, "message": "Já existe um processamento em andamento"}), 400
+    filtros = request.get_json(silent=True) or {}
+    categorias = filtros.get("categorias")
+    item_ids = filtros.get("item_ids")
+    try:
+        from ..services.extraction_pipeline import _validar_categorias
+        _validar_categorias(categorias)
+        if item_ids is not None and (not isinstance(item_ids, list) or not item_ids):
+            raise ValueError("Nenhum item selecionado para reanálise")
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
 
-    app_state.processamento_ativo = True
+    with app_state.processamento_lock:
+        if app_state.processamento_ativo:
+            return jsonify({"success": False, "message": "Já existe um processamento em andamento"}), 400
+        app_state.processamento_ativo = True
+    if item_ids:
+        escopo_txt = f"{len(item_ids)} item(ns) selecionado(s)"
+    elif categorias:
+        escopo_txt = f"categorias: {', '.join(categorias)}"
+    else:
+        escopo_txt = "todas as imagens"
     app_state.progresso_atual = {
         "progresso": 0,
-        "status": f"Iniciando reanálise da execução #{run_id}",
-        "logs": [f"🔄 Iniciando reanálise da execução #{run_id}"],
+        "status": f"Iniciando reanálise da execução #{run_id} ({escopo_txt})",
+        "logs": [f"🔄 Iniciando reanálise da execução #{run_id} ({escopo_txt})"],
     }
 
     def callback_progresso(info):
@@ -266,7 +295,10 @@ def historico_reanalisar(run_id):
         try:
             from ..services.extraction_pipeline import reanalisar_execucao
 
-            resultado = reanalisar_execucao(run_id, callback_progresso=callback_progresso)
+            resultado = reanalisar_execucao(
+                run_id, callback_progresso=callback_progresso,
+                categorias=categorias, item_ids=item_ids,
+            )
             app_state.progresso_atual["resultado"] = resultado
             if resultado.get("sucesso"):
                 app_state.progresso_atual["status"] = "Reanálise concluída"
@@ -285,5 +317,9 @@ def historico_reanalisar(run_id):
         finally:
             app_state.processamento_ativo = False
 
-    threading.Thread(target=executar_reanalise, daemon=True).start()
+    try:
+        threading.Thread(target=executar_reanalise, daemon=True).start()
+    except Exception:
+        app_state.processamento_ativo = False
+        raise
     return jsonify({"success": True, "message": "Reanálise iniciada!"})

@@ -175,11 +175,24 @@ def processar_resultado_arquivo(
         if not isinstance(itens, list):
             itens = [dados] if dados else []
 
-        if tipo == "Avaria":
+        if tipo == "Misto":
+            itens_avaria = [item for item in itens if isinstance(item, dict) and item.get("categoria") == "Avaria"]
+            itens_uso = [item for item in itens if isinstance(item, dict) and item.get("categoria") == "Uso Interno"]
+            if len(itens_avaria) + len(itens_uso) != len(itens) or not itens:
+                _processar_erro(
+                    {"detalhes": "Resposta mista sem categoria válida para todos os itens."},
+                    nome_arquivo, msg_associada, caminho_absoluto, novos_erros,
+                )
+            else:
+                _processar_avaria(itens_avaria, msg_associada, caminho_absoluto, novas_avarias)
+                _processar_uso_interno(itens_uso, msg_associada, caminho_absoluto, novos_usos_internos)
+        elif tipo == "Avaria" and itens:
             _processar_avaria(itens, msg_associada, caminho_absoluto, novas_avarias)
-        elif tipo == "Uso Interno":
+        elif tipo == "Uso Interno" and itens:
             _processar_uso_interno(itens, msg_associada, caminho_absoluto, novos_usos_internos)
         else:
+            if tipo in ("Avaria", "Uso Interno") and not itens:
+                dados = {**dados, "detalhes": "A análise não retornou itens para esta categoria."}
             _processar_erro(dados, nome_arquivo, msg_associada, caminho_absoluto, novos_erros)
     except Exception as e:
         caminho_absoluto = os.path.abspath(os.path.join(diretorio_imagens, nome_arquivo))

@@ -68,6 +68,9 @@ def fazer_backup(arquivo_excel):
 def salvar_todas_sheets(arquivo_excel, sheets, apenas_nao_vazias=False):
     """Regrava todas as planilhas no arquivo Excel.
 
+    A escrita é atômica (temporário + ``os.replace``): uma falha no meio da
+    gravação nunca deixa o mestre truncado no disco.
+
     Args:
         arquivo_excel: caminho do arquivo Excel a ser (re)escrito.
         sheets: dict {nome_da_planilha: DataFrame}.
@@ -75,11 +78,30 @@ def salvar_todas_sheets(arquivo_excel, sheets, apenas_nao_vazias=False):
             gravação - comportamento original específico da rota
             ``/mover_item``.
     """
-    with pd.ExcelWriter(arquivo_excel, engine="openpyxl") as writer:
-        for nome_sheet, dataframe in sheets.items():
-            if apenas_nao_vazias and dataframe.empty:
-                continue
-            dataframe.to_excel(writer, sheet_name=nome_sheet, index=False)
+    import tempfile
+
+    arquivo_excel = os.fspath(arquivo_excel)
+    pasta = os.path.dirname(arquivo_excel) or "."
+    os.makedirs(pasta, exist_ok=True)
+    temporario = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=".sheets_tmp_", suffix=".xlsx", dir=pasta, delete=False
+        ) as arquivo_temp:
+            temporario = arquivo_temp.name
+        with pd.ExcelWriter(temporario, engine="openpyxl") as writer:
+            for nome_sheet, dataframe in sheets.items():
+                if apenas_nao_vazias and dataframe.empty:
+                    continue
+                dataframe.to_excel(writer, sheet_name=nome_sheet, index=False)
+        os.replace(temporario, arquivo_excel)
+        temporario = None
+    finally:
+        if temporario and os.path.exists(temporario):
+            try:
+                os.remove(temporario)
+            except OSError:
+                pass
 
 
 def remover_linhas_por_caminho_imagem(sheets, caminhos):

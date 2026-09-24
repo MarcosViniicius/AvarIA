@@ -13,7 +13,7 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from tqdm import tqdm
 
@@ -223,6 +223,27 @@ def _linha_de_erro(nome_arquivo: str, detalhe: str, mensagens_por_imagem: Dict[s
     }
 
 
+def _resolver_caminho_imagem(caminho_registrado: str) -> Optional[str]:
+    """Resolve o caminho histórico de uma imagem pendente ou arquivada.
+
+    Execuções antigas registram o caminho da pasta de pendentes, embora a
+    imagem seja movida para ARCHIVE_FOLDER ao concluir. Preferimos o caminho
+    gravado e, se ele não existir, procuramos pelo nome nas pastas oficiais.
+    """
+    if not caminho_registrado:
+        return None
+    caminho_registrado = os.path.abspath(caminho_registrado)
+    if os.path.isfile(caminho_registrado):
+        return caminho_registrado
+
+    nome = os.path.basename(caminho_registrado)
+    for pasta in (UPLOAD_FOLDER, ARCHIVE_FOLDER):
+        candidato = os.path.abspath(os.path.join(str(pasta), nome))
+        if os.path.isfile(candidato):
+            return candidato
+    return None
+
+
 def _persistir_lote(run_id: Optional[int], avarias, usos_internos, erros) -> None:
     """Grava os resultados de UM lote no Excel e no banco.
 
@@ -246,7 +267,10 @@ def _persistir_lote(run_id: Optional[int], avarias, usos_internos, erros) -> Non
 # ================================
 
 
-def main(modo_extracao: Optional[str] = None) -> None:
+def main(
+    modo_extracao: Optional[str] = None,
+    callback_progresso: Optional[callable] = None,
+) -> bool:
     """Processa as imagens novas em imagens_para_analisar/ e atualiza o relatório mestre.
 
     Args:
@@ -290,7 +314,7 @@ def main(modo_extracao: Optional[str] = None) -> None:
             UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
             print(f"📁 Diretório criado: {UPLOAD_FOLDER}")
             print("⚠️  ATENÇÃO: Adicione suas imagens (.jpg, .png) e o arquivo .txt de mensagens")
-            return
+            return True
 
         imagens_processadas = carregar_logs()
         print(f"📝 Histórico: {len(imagens_processadas)} arquivos já processados anteriormente\n")
@@ -315,7 +339,7 @@ def main(modo_extracao: Optional[str] = None) -> None:
 
         if not imagens_para_processar:
             print("✅ PROCESSAMENTO COMPLETO: Todas as imagens já foram analisadas\n")
-            return
+            return True
 
         run_id = db.iniciar_execucao("processamento", imagens_total=len(imagens_para_processar))
 
@@ -348,14 +372,7 @@ def main(modo_extracao: Optional[str] = None) -> None:
 
             with tqdm(total=len(imagens_para_processar), desc="Analisando", unit="img") as pbar:
                 for future in concurrent.futures.as_completed(future_to_lote):
-                    if verificar_cancelamento():
-                        print("\n⚠️ Processamento cancelado pelo usuário")
-                        executor.shutdown(wait=False, cancel_futures=True)
-                        db.finalizar_execucao(
-                            run_id, "cancelado", len(novas_avarias), len(novos_usos_internos),
-                            len(novos_erros), total_tokens_consumidos, "Cancelado pelo usuário",
-                        )
-                        return
+                    cancelamento_solicitado = verificar_cancelamento()
 
                     lote_processado_caminhos = future_to_lote[future]
                     lote_processado_nomes = [os.path.basename(p) for p in lote_processado_caminhos]
@@ -398,6 +415,30 @@ def main(modo_extracao: Optional[str] = None) -> None:
 
                     pbar.update(len(lote_processado_nomes))
 
+                    if callback_progresso:
+                        callback_progresso({
+                            "atual": pbar.n,
+                            "total": len(imagens_para_processar),
+                            "arquivo": lote_processado_nomes[-1] if lote_processado_nomes else "",
+                        })
+
+                    if cancelamento_solicitado:
+                        # Este future já terminou (as_completed só o entrega
+                        # nesse ponto): persistimos o lote antes de encerrar,
+                        # para não pagar pela análise e descartar seu resultado.
+                        print("\n⚠️ Processamento cancelado após salvar o lote concluído")
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        db.finalizar_execucao(
+                            run_id,
+                            "cancelado",
+                            len(novas_avarias) + len(avarias_lote),
+                            len(novos_usos_internos) + len(usos_lote),
+                            len(novos_erros) + len(erros_lote),
+                            total_tokens_consumidos,
+                            "Cancelado pelo usuário",
+                        )
+                        return False
+
                     novas_avarias.extend(avarias_lote)
                     novos_usos_internos.extend(usos_lote)
                     novos_erros.extend(erros_lote)
@@ -423,6 +464,7 @@ def main(modo_extracao: Optional[str] = None) -> None:
         print(f"   🪙 Total de tokens consumidos: {total_tokens_consumidos:,}")
         print(f"   💾 Relatório salvo em: {ARQUIVO_SAIDA_EXCEL}")
         print("=" * 70 + "\n")
+        return True
 
     except Exception as e:
         print("\n❌ ERRO CRÍTICO na execução principal:")
@@ -432,6 +474,7 @@ def main(modo_extracao: Optional[str] = None) -> None:
         traceback.print_exc()
         if run_id is not None:
             db.finalizar_execucao(run_id, "erro", mensagem=str(e))
+        return False
 
 
 def reanalisar_erros(
@@ -449,11 +492,11 @@ def reanalisar_erros(
     config = carregar_configuracao()
     request_delay = config.get("processamento", {}).get("request_delay", 2.0)
 
-    run_id = db.iniciar_execucao("reanalise")
-
+    run_id: Optional[int] = None
     try:
         gerenciador = criar_gerenciador(arquivo_excel)
         arquivos_com_erro = gerenciador.obter_arquivos_com_erro()
+        run_id = db.iniciar_execucao("reanalise", imagens_total=len(arquivos_com_erro))
 
         if not arquivos_com_erro:
             print("✅ Nenhum erro pendente para reanalisar")
@@ -472,7 +515,10 @@ def reanalisar_erros(
         itens_corrigidos = 0
         ainda_com_erro = 0
         tokens_totais = 0
+        avarias_da_execucao = 0
+        usos_da_execucao = 0
         detalhes_resultado = []
+        erros_da_execucao = []
 
         for idx, nome_arquivo in enumerate(arquivos_com_erro, 1):
             if callback_progresso:
@@ -484,6 +530,9 @@ def reanalisar_erros(
             if not os.path.exists(caminho_imagem):
                 print(f"   ⚠️ Arquivo não encontrado: {caminho_imagem}")
                 detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": "Arquivo não encontrado"})
+                erros_da_execucao.append(_linha_de_erro(
+                    nome_arquivo, "Arquivo não encontrado", mensagens_por_imagem, diretorio_imagens
+                ))
                 ainda_com_erro += 1
                 gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", "Arquivo não encontrado")
                 continue
@@ -504,16 +553,25 @@ def reanalisar_erros(
                     )
 
                     salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos_internos, novos_erros)
-                    db.registrar_itens(run_id, "Avarias", novas_avarias)
-                    db.registrar_itens(run_id, "Uso Interno", novos_usos_internos)
+                    if novos_erros:
+                        erros_da_execucao.extend(novos_erros)
+                        ainda_com_erro += 1
+                        motivo = novos_erros[0].get("Detalhes do Erro", "Resultado inválido")
+                        gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=False)
+                        detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": motivo})
+                        gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", motivo)
+                    else:
+                        db.registrar_itens(run_id, "Avarias", novas_avarias)
+                        db.registrar_itens(run_id, "Uso Interno", novos_usos_internos)
+                        avarias_da_execucao += len(novas_avarias)
+                        usos_da_execucao += len(novos_usos_internos)
 
-                    gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=True)
-                    if not novos_erros:
+                        gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=True)
                         image_archive.arquivar_imagem(nome_arquivo, diretorio_imagens, ARCHIVE_FOLDER)
 
-                    itens_corrigidos += 1
-                    detalhes_resultado.append({"arquivo": nome_arquivo, "status": "sucesso", "tipo": tipo})
-                    gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "sucesso", f"Tipo: {tipo}")
+                        itens_corrigidos += 1
+                        detalhes_resultado.append({"arquivo": nome_arquivo, "status": "sucesso", "tipo": tipo})
+                        gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "sucesso", f"Tipo: {tipo}")
                 else:
                     erro_detalhes = dados.get("detalhes", "Erro desconhecido") if dados else "Sem resposta"
                     print(f"   ❌ Ainda com erro: {erro_detalhes}")
@@ -521,6 +579,9 @@ def reanalisar_erros(
                     detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": erro_detalhes})
                     gerenciador.marcar_erro_como_reprocessado(nome_arquivo, sucesso=False)
                     gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", erro_detalhes)
+                    erros_da_execucao.append(_linha_de_erro(
+                        nome_arquivo, erro_detalhes, mensagens_por_imagem, diretorio_imagens
+                    ))
 
                 if idx < len(arquivos_com_erro):
                     time.sleep(request_delay)
@@ -530,6 +591,9 @@ def reanalisar_erros(
                 ainda_com_erro += 1
                 detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": str(e)})
                 gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", str(e))
+                erros_da_execucao.append(_linha_de_erro(
+                    nome_arquivo, str(e), mensagens_por_imagem, diretorio_imagens
+                ))
 
         print("\n" + "=" * 60)
         print("✅ REANÁLISE CONCLUÍDA")
@@ -539,7 +603,15 @@ def reanalisar_erros(
         print("=" * 60)
 
         db.registrar_consumo_tokens(run_id, tokens_totais, f"Reanálise de {len(arquivos_com_erro)} arquivos")
-        db.finalizar_execucao(run_id, "concluido", uso_interno=0, erros=ainda_com_erro, tokens_consumidos=tokens_totais)
+        db.registrar_itens(run_id, "Erros de Análise", erros_da_execucao)
+        db.finalizar_execucao(
+            run_id,
+            "concluido",
+            avarias=avarias_da_execucao,
+            uso_interno=usos_da_execucao,
+            erros=ainda_com_erro,
+            tokens_consumidos=tokens_totais,
+        )
 
         return {
             "sucesso": True,
@@ -555,25 +627,86 @@ def reanalisar_erros(
         import traceback
 
         traceback.print_exc()
-        db.finalizar_execucao(run_id, "erro", mensagem=str(e))
+        if run_id is not None:
+            db.finalizar_execucao(run_id, "erro", mensagem=str(e))
         return {
             "sucesso": False, "erro": str(e), "total_arquivos": 0,
             "processados": 0, "corrigidos": 0, "ainda_com_erro": 0, "detalhes": [],
         }
 
 
+CATEGORIAS_REANALISE = ("Avarias", "Uso Interno", "Erros de Análise")
+
+
+def _validar_categorias(categorias) -> Optional[List[str]]:
+    """Valida o filtro de categorias da reanálise seletiva.
+
+    Retorna a lista normalizada ou None (sem filtro = tudo). Levanta
+    ValueError para categoria desconhecida ou lista vazia explícita.
+    """
+    if categorias is None:
+        return None
+    if not isinstance(categorias, (list, tuple)) or not categorias:
+        raise ValueError("Nenhuma categoria selecionada para reanálise")
+    desconhecidas = [c for c in categorias if c not in CATEGORIAS_REANALISE]
+    if desconhecidas:
+        raise ValueError(f"Categorias inválidas para reanálise: {desconhecidas}")
+    return list(categorias)
+
+
+def _item_db_para_linha(categoria: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """Converte um item do banco (colunas report_items) para linha de Excel.
+
+    É o inverso de `db.registrar_itens`: permite copiar itens NÃO
+    selecionados para a nova versão sem passar pela IA.
+    """
+    observacao = item.get("observacao_mensagem")
+    caminho = item.get("caminho_imagem")
+    if categoria == "Erros de Análise":
+        return {
+            "Arquivo": item.get("produto"),
+            "Detalhes do Erro": item.get("detalhes"),
+            "Observação da Mensagem": observacao,
+            "Caminho da Imagem": caminho,
+            "Ver Imagem": caminho,
+        }
+    if categoria == "Uso Interno":
+        return {
+            "Produto": item.get("produto"),
+            "Quantidade": item.get("quantidade"),
+            "Marca": item.get("marca"),
+            "Código de Barras": item.get("codigo_barras"),
+            "Observação da Mensagem": observacao,
+            "Caminho da Imagem": caminho,
+            "Ver Imagem": caminho,
+        }
+    return {
+        "Produto": item.get("produto"),
+        "Quantidade": item.get("quantidade"),
+        "Peso": item.get("peso"),
+        "Observação da Mensagem": observacao,
+        "Caminho da Imagem": caminho,
+        "Ver Imagem": caminho,
+    }
+
+
 def reanalisar_execucao(
     run_id: int,
     arquivo_excel: Optional[str] = None,
     callback_progresso: Optional[callable] = None,
+    categorias: Optional[List[str]] = None,
+    item_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
-    """Reanalisa todas as imagens de uma execução já concluída, criando uma
-    nova versão dela (ver versionamento em services/db.py).
+    """Reanalisa imagens de uma execução já concluída, criando uma nova versão.
 
-    Diferente de `reanalisar_erros` (que só reprocessa itens marcados como
-    erro, sem criar versão nenhuma), esta função reprocessa TODOS os itens
-    de uma execução - inclusive os que já deram certo - a pedido explícito
-    do usuário (botão "Reanalisar" no Histórico).
+    Sem filtros, reprocessa TODOS os itens (comportamento original). Com
+    `categorias` (ex.: ["Erros de Análise"]) ou `item_ids` (ids do banco),
+    reprocessa só a seleção: os demais itens são COPIADOS para a nova versão,
+    de modo que cada versão continua representando a execução inteira.
+
+    `item_ids` tem precedência sobre `categorias` quando ambos são dados.
+    Diferente de `reanalisar_erros` (só erro do Excel mestre, sem versão),
+    esta função sempre versiona (ver versionamento em services/db.py).
     """
     print(f"\n🔄 INICIANDO REANÁLISE DA EXECUÇÃO #{run_id}")
     print("=" * 60)
@@ -587,7 +720,31 @@ def reanalisar_execucao(
         raise ValueError(f"Execução #{run_id} não encontrada")
 
     raiz_execucao_id = execucao["raiz_execucao_id"] or execucao["id"]
-    itens = [item for item in execucao["itens"] if item.get("caminho_imagem")]
+    itens = execucao["itens"]
+
+    # ---- Seleção: um item, vários ou todos ----
+    categorias_filtro = _validar_categorias(categorias)
+    if item_ids is not None:
+        if not isinstance(item_ids, (list, tuple)) or not item_ids:
+            raise ValueError("Nenhum item selecionado para reanálise")
+        ids_validos = {item["id"] for item in itens}
+        desconhecidos = [i for i in item_ids if i not in ids_validos]
+        if desconhecidos:
+            raise ValueError(f"Itens não pertencem à execução #{run_id}: {desconhecidos}")
+        itens_alvo = [item for item in itens if item["id"] in set(item_ids)]
+    elif categorias_filtro is not None:
+        itens_alvo = [item for item in itens if item.get("categoria") in categorias_filtro]
+    else:
+        itens_alvo = list(itens)
+
+    if not itens_alvo:
+        raise ValueError("A seleção não contém itens para reanálise")
+
+    # Itens com imagem vão para a IA; sem caminho não há o que reanalisar e
+    # são preservados como estão na nova versão.
+    com_imagem = [item for item in itens_alvo if item.get("caminho_imagem")]
+    sem_imagem = [item for item in itens_alvo if not item.get("caminho_imagem")]
+    caminhos_alvo = {item["caminho_imagem"] for item in com_imagem}
 
     # Uma mesma imagem pode ter gerado MAIS DE UMA linha na análise original
     # (ex.: uma foto de um palete com 2 produtos avariados vira 2 linhas em
@@ -596,16 +753,29 @@ def reanalisar_execucao(
     # contrário a mesma imagem seria reanalisada 2x e os resultados de cada
     # chamada seriam somados, duplicando/inflando os dados dela.
     itens_por_caminho: Dict[str, Dict[str, Any]] = {}
-    for item in itens:
+    for item in com_imagem:
         itens_por_caminho.setdefault(item["caminho_imagem"], item)
     itens_unicos = list(itens_por_caminho.values())
+
+    # Preservados: tudo da execução que NÃO foi selecionado (mais os
+    # selecionados sem imagem) — copiados intactos para a nova versão.
+    preservados = [item for item in itens if item.get("caminho_imagem") not in caminhos_alvo]
+    preservados += sem_imagem
 
     novo_run_id = db.iniciar_reanalise_de_execucao(raiz_execucao_id, imagens_total=len(itens_unicos))
 
     try:
         if not itens_unicos:
-            db.finalizar_execucao(novo_run_id, "concluido", mensagem="Nenhuma imagem com caminho registrado para reanalisar")
-            return {"sucesso": True, "run_id": novo_run_id, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0}
+            for categoria in CATEGORIAS_REANALISE:
+                db.registrar_itens(novo_run_id, categoria, [
+                    _item_db_para_linha(categoria, item)
+                    for item in preservados
+                    if item.get("categoria") == categoria
+                ])
+            db.finalizar_execucao(novo_run_id, "concluido", mensagem="Nenhuma imagem com caminho registrado para reanálise; itens preservados")
+            return {"sucesso": True, "run_id": novo_run_id, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0,
+                    "selecionados": len(itens_alvo), "preservados": len(preservados), "sem_imagem": len(sem_imagem),
+                    "categorias": categorias_filtro}
 
         provider = construir_provedor_de_config(config)
         print(f"✅ {provider.nome_provedor} configurado para a reanálise")
@@ -626,19 +796,20 @@ def reanalisar_execucao(
         tokens_totais = 0
 
         for idx, item in enumerate(itens_unicos, 1):
-            caminho_imagem = item["caminho_imagem"]
-            nome_arquivo = os.path.basename(caminho_imagem)
+            caminho_registrado = item["caminho_imagem"]
+            nome_arquivo = os.path.basename(caminho_registrado)
+            caminho_imagem = _resolver_caminho_imagem(caminho_registrado)
 
             if callback_progresso:
                 callback_progresso({"atual": idx, "total": len(itens_unicos), "arquivo": nome_arquivo})
 
-            if not os.path.exists(caminho_imagem):
+            if not caminho_imagem:
                 novos_erros.append({
                     "Arquivo": nome_arquivo,
                     "Detalhes do Erro": "Arquivo de imagem não encontrado para reanálise",
                     "Observação da Mensagem": mensagens_por_imagem.get(nome_arquivo, "Nenhuma"),
-                    "Caminho da Imagem": caminho_imagem,
-                    "Ver Imagem": caminho_imagem,
+                    "Caminho da Imagem": caminho_registrado,
+                    "Ver Imagem": caminho_registrado,
                 })
             else:
                 try:
@@ -673,6 +844,15 @@ def reanalisar_execucao(
         db.registrar_itens(novo_run_id, "Avarias", novas_avarias)
         db.registrar_itens(novo_run_id, "Uso Interno", novos_usos_internos)
         db.registrar_itens(novo_run_id, "Erros de Análise", novos_erros)
+        # A nova versão representa a execução inteira: copia os itens que
+        # ficaram fora da seleção sem passar pela IA.
+        for categoria in CATEGORIAS_REANALISE:
+            linhas_preservadas = [
+                _item_db_para_linha(categoria, item)
+                for item in preservados
+                if item.get("categoria") == categoria
+            ]
+            db.registrar_itens(novo_run_id, categoria, linhas_preservadas)
         db.registrar_consumo_tokens(novo_run_id, tokens_totais, f"Reanálise de {len(itens_unicos)} imagens")
         db.finalizar_execucao(
             novo_run_id, "concluido", len(novas_avarias), len(novos_usos_internos),
@@ -683,6 +863,9 @@ def reanalisar_execucao(
         return {
             "sucesso": True, "run_id": novo_run_id, "total_arquivos": len(itens_unicos),
             "avarias": len(novas_avarias), "uso_interno": len(novos_usos_internos), "erros": len(novos_erros),
+            "selecionados": len(itens_alvo), "preservados": len(preservados),
+            "sem_imagem": len(sem_imagem),
+            "categorias": categorias_filtro,
         }
 
     except Exception as e:
@@ -692,3 +875,134 @@ def reanalisar_execucao(
         traceback.print_exc()
         db.finalizar_execucao(novo_run_id, "erro", mensagem=str(e))
         return {"sucesso": False, "erro": str(e), "run_id": novo_run_id}
+
+
+def reanalisar_selecao_mestre(
+    imagens=None,
+    categorias=None,
+    diretorio_imagens: Optional[str] = None,
+    arquivo_excel: Optional[str] = None,
+    callback_progresso: Optional[callable] = None,
+) -> Dict[str, Any]:
+    """Reanalisa imagens do relatório mestre (Excel), por seleção.
+
+    Usado pelas telas de exibição (Relatório) e edição geral (Editar Dados),
+    que mostram o Excel acumulado sem vínculo com uma execução: `imagens`
+    (nomes de arquivo) tem precedência; sem elas, `categorias` (ex.:
+    ["Avarias"]) deriva as imagens das respectivas abas do Excel. Sem nenhum
+    dos dois, levanta ValueError — reanalisar "tudo do mestre" sem seleção
+    seria caro e quase nunca intencional (para isso, use a reanálise por
+    execução no Histórico).
+
+    Cada imagem é reprocessada 1x pela IA e suas linhas antigas (todas as
+    abas) são substituídas pelas novas; sucesso arquiva a imagem.
+    """
+    print("\n🔄 INICIANDO REANÁLISE SELECIONADA DO MESTRE")
+    print("=" * 60)
+
+    diretorio_imagens = diretorio_imagens or str(UPLOAD_FOLDER)
+    arquivo_excel = arquivo_excel or str(ARQUIVO_SAIDA_EXCEL)
+    categorias_filtro = _validar_categorias(categorias)
+
+    alvos: List[str] = []
+    if imagens:
+        for entrada in imagens:
+            nome = os.path.basename(str(entrada or "").strip())
+            if nome and nome not in alvos:
+                alvos.append(nome)
+    elif categorias_filtro is not None:
+        sheets = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
+        for sheet in categorias_filtro:
+            df = sheets.get(sheet)
+            if df is None or df.empty:
+                continue
+            for _, row in df.iterrows():
+                caminho = row.get("Caminho da Imagem")
+                nome = os.path.basename(str(caminho).strip()) if isinstance(caminho, str) and caminho.strip() not in ("", "N/A", "-", "nan") else ""
+                if not nome:
+                    arquivo = row.get("Arquivo")
+                    nome = os.path.basename(str(arquivo).strip()) if isinstance(arquivo, str) and arquivo.strip() else ""
+                if nome and nome not in alvos:
+                    alvos.append(nome)
+
+    if not alvos:
+        raise ValueError("Nenhuma imagem selecionada para reanálise")
+
+    config = carregar_configuracao()
+    request_delay = config.get("processamento", {}).get("request_delay", 2.0)
+    run_id = db.iniciar_execucao("reanalise", imagens_total=len(alvos))
+    gerenciador = criar_gerenciador(arquivo_excel)
+
+    try:
+        provider = construir_provedor_de_config(config)
+        mensagens_por_imagem = conversa.mapear_mensagens_para_imagens(diretorio_imagens)
+
+        corrigidos = ainda_com_erro = tokens_totais = 0
+        avarias_total = usos_total = 0
+        detalhes, erros_exec = [], []
+        fazer_backup(arquivo_excel)
+
+        for idx, nome_arquivo in enumerate(alvos, 1):
+            if callback_progresso:
+                callback_progresso({"atual": idx, "total": len(alvos), "arquivo": nome_arquivo})
+            caminho_imagem = _resolver_caminho_imagem(os.path.join(diretorio_imagens, nome_arquivo))
+
+            if not caminho_imagem:
+                ainda_com_erro += 1
+                detalhes.append({"arquivo": nome_arquivo, "status": "falha", "motivo": "Arquivo não encontrado"})
+                erros_exec.append(_linha_de_erro(nome_arquivo, "Arquivo não encontrado", mensagens_por_imagem, diretorio_imagens))
+                gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", "Arquivo não encontrado")
+                continue
+
+            try:
+                resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                tokens_totais += tokens
+                novas_avarias, novos_usos, novos_erros = [], [], []
+                ai_extraction.processar_resultado_arquivo(
+                    nome_arquivo, resultado, mensagens_por_imagem, os.path.dirname(caminho_imagem),
+                    novas_avarias, novos_usos, novos_erros,
+                )
+                sheets_atuais = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
+                sheets_limpas = remover_linhas_por_caminho_imagem(sheets_atuais, {caminho_imagem, os.path.join(diretorio_imagens, nome_arquivo)})
+                if sheets_limpas:
+                    salvar_todas_sheets(arquivo_excel, sheets_limpas)
+                salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos, novos_erros)
+
+                if novos_erros and not (novas_avarias or novos_usos):
+                    ainda_com_erro += 1
+                    motivo = novos_erros[0].get("Detalhes do Erro", "Resultado inválido")
+                    detalhes.append({"arquivo": nome_arquivo, "status": "falha", "motivo": motivo})
+                    erros_exec.extend(novos_erros)
+                    gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", motivo)
+                else:
+                    db.registrar_itens(run_id, "Avarias", novas_avarias)
+                    db.registrar_itens(run_id, "Uso Interno", novos_usos)
+                    avarias_total += len(novas_avarias)
+                    usos_total += len(novos_usos)
+                    image_archive.arquivar_imagem(nome_arquivo, diretorio_imagens, ARCHIVE_FOLDER)
+                    corrigidos += 1
+                    detalhes.append({"arquivo": nome_arquivo, "status": "sucesso"})
+                    gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "sucesso", "Reanálise seletiva do mestre")
+            except Exception as e:
+                ainda_com_erro += 1
+                detalhes.append({"arquivo": nome_arquivo, "status": "falha", "motivo": str(e)})
+                erros_exec.append(_linha_de_erro(nome_arquivo, str(e), mensagens_por_imagem, diretorio_imagens))
+                gerenciador.adicionar_ao_log_reanalise(nome_arquivo, "falha", str(e))
+
+            if idx < len(alvos):
+                time.sleep(request_delay)
+
+        db.registrar_consumo_tokens(run_id, tokens_totais, f"Reanálise seletiva do mestre ({len(alvos)} imagens)")
+        db.registrar_itens(run_id, "Erros de Análise", erros_exec)
+        db.finalizar_execucao(run_id, "concluido", avarias_total, usos_total, ainda_com_erro, tokens_totais)
+        print(f"✅ REANÁLISE SELETIVA CONCLUÍDA: {corrigidos} corrigidos, {ainda_com_erro} com erro")
+        return {"sucesso": True, "total_arquivos": len(alvos), "processados": len(alvos),
+                "corrigidos": corrigidos, "ainda_com_erro": ainda_com_erro, "detalhes": detalhes,
+                "categorias": categorias_filtro}
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        db.finalizar_execucao(run_id, "erro", mensagem=str(e))
+        return {"sucesso": False, "erro": str(e), "total_arquivos": len(alvos),
+                "processados": 0, "corrigidos": 0, "ainda_com_erro": 0, "detalhes": []}

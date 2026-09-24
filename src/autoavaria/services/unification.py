@@ -167,6 +167,7 @@ def unificar_itens_avarias(df):
             continue
 
         peso = extrair_peso_de_valor(peso_valor)
+        quantidade_linha = _quantidade_da_linha(row) or 1
 
         if produto_norm not in grupos:
             grupos[produto_norm] = {
@@ -179,7 +180,7 @@ def unificar_itens_avarias(df):
         if peso is not None and peso > 0:
             grupos[produto_norm]["quantidade_kg"] += peso
         else:
-            grupos[produto_norm]["quantidade_un"] += 1
+            grupos[produto_norm]["quantidade_un"] += quantidade_linha
 
         grupos[produto_norm]["registros"].append({
             "index": idx,
@@ -220,6 +221,18 @@ def unificar_itens_avarias(df):
 
 
 _CODIGOS_INVALIDOS = {"", "n/a", "na", "-", "none", "null", "nan", "nenhum", "nenhuma"}
+
+
+def _quantidade_da_linha(row):
+    """Lê a quantidade já associada ao item, quando disponível."""
+    valor = row.get("Quantidade")
+    if pd.isna(valor) or str(valor).strip() in ("", "-"):
+        return None
+    try:
+        quantidade = int(float(str(valor).replace(",", ".")))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return quantidade if quantidade > 0 else None
 
 
 def _codigo_barras_valido(valor) -> bool:
@@ -268,7 +281,10 @@ def unificar_itens_uso_interno(df):
         if not produto_norm:
             continue
 
-        quantidade = extrair_quantidade_de_observacao(observacao)
+        quantidade = _quantidade_da_linha(row)
+        if quantidade is None:
+            # Compatibilidade com planilhas antigas sem coluna Quantidade.
+            quantidade = extrair_quantidade_de_observacao(observacao)
 
         if _codigo_barras_valido(codigo_bruto):
             codigo_barras = str(codigo_bruto).strip()
@@ -337,3 +353,39 @@ def unificar_itens_uso_interno(df):
         df_unificado = df.copy()
 
     return df_unificado, auditoria
+
+
+def renderizar_secciones_como_texto(secciones) -> str:
+    """Convierte un dict {sección: DataFrame} en texto tabular legible.
+
+    Pensado para mostrar en pantalla (después de unificar) todo lo que se
+    generó, e que o usuário possa copiar (separado por TAB para que cole bem
+    numa hoja de cálculo). Solo incluye seções não vazias.
+
+    Formato por seção:
+        NOME DA SEÇÃO
+        --------------------
+        Cab1\tCab2\t...
+        val1\tval2\t...
+        (fila vazia entre seções)
+    """
+    secciones_filtradas = {n: df for n, df in secciones.items() if df is not None and not df.empty}
+    if not secciones_filtradas:
+        return ""
+
+    bloques = []
+    for nombre, df in secciones_filtradas.items():
+        lineas = [nombre, "-" * len(str(nombre))]
+        df_str = df.astype(object).where(pd.notna(df), "-")
+        lineas.append("\t".join(str(col) for col in df_str.columns))
+        for _, fila in df_str.iterrows():
+            # A saída é destinada a copiar/colar como TSV: tabs e quebras de
+            # linha dentro de um campo não devem deslocar colunas/registros.
+            valores = [
+                str(valor).replace("\t", " ").replace("\r", " ").replace("\n", " / ")
+                for valor in fila.tolist()
+            ]
+            lineas.append("\t".join(valores))
+        bloques.append("\n".join(lineas))
+
+    return "\n\n".join(bloques)

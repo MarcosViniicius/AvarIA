@@ -174,8 +174,12 @@ def escrever_txt_detalhado(
 
 
 def escrever_txt_compacto(caminho: str, titulo: str, secoes: Dict[str, pd.DataFrame]) -> None:
-    """TXT compacto: uma linha 'PRODUTO | QUANTIDADE TOTAL [| CÓDIGO DE BARRAS]'
-    por item - para seções já unificadas."""
+    """Grava o TXT compacto usado por seções já unificadas."""
+    _gravar_linhas(caminho, renderizar_txt_compacto(titulo, secoes).split("\n"))
+
+
+def renderizar_txt_compacto(titulo: str, secoes: Dict[str, pd.DataFrame]) -> str:
+    """Devolve exatamente o conteúdo produzido por ``escrever_txt_compacto``."""
     linhas = _cabecalho(titulo)
 
     for nome_secao, df in secoes.items():
@@ -204,4 +208,4 @@ def escrever_txt_compacto(caminho: str, titulo: str, secoes: Dict[str, pd.DataFr
         linhas.append("")
 
     linhas += _rodape()
-    _gravar_linhas(caminho, linhas)
+    return "\n".join(linhas)

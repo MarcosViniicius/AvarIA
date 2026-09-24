@@ -1,3 +1,7 @@
+import os
+import sys
+from pathlib import Path
+
 from flask import Flask
 
 from .core.paths import APP_PACKAGE_ROOT, RESULTADOS_DIR, ensure_directories
@@ -9,6 +13,26 @@ from .services.optimization import init_optimizations
 from .services import db as db_service
 from .services import campo_migration
 from .services import catalogo
+
+
+def _register_static_versioning(app):
+    """Expõe static_v(path) nos templates: carimba a URL com o mtime do arquivo.
+
+    O CacheMiddleware serve /static/* com ``max-age=31536000`` (1 ano). Sem
+    trocar a URL a cada alteração, o navegador continua usando o arquivo
+    antigo — foi assim que uma correção de JS "não fazia efeito" depois de
+    editada. O mtime garante que cada edição gere uma URL nova.
+    """
+
+    static_dir = APP_PACKAGE_ROOT / "static"
+
+    @app.template_global()
+    def static_v(filename: str) -> str:
+        try:
+            mtime = int(os.path.getmtime(static_dir / filename))
+        except OSError:
+            mtime = 0
+        return f"/static/{filename}?v={mtime}"
 
 
 def _register_endpoint_aliases(app):
@@ -50,5 +74,6 @@ def create_app():
     register_blueprints(app)
     _register_endpoint_aliases(app)
     register_error_handlers(app)
+    _register_static_versioning(app)
     init_optimizations(app)
     return app

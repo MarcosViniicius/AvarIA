@@ -66,7 +66,22 @@ def extrair_arquivos_comprimidos(pasta_imagens, logs_callback=None, forcar=False
         dict: Resultados da extração
     """
     try:
-        extrator = ExtratorArquivos(pasta_origem=pasta_imagens, pasta_arquivo=ARCHIVE_FOLDER, forcar=forcar)
+        # Nomes já analisados (log_mestre.txt): um ZIP reenviado com imagens já
+        # processadas não deve gerar sufixo (`IMG-x_2.jpg`), que seria analisado
+        # de novo. Ver nome_para_gravar em services/extraction.py.
+        from ..services.extraction_pipeline import carregar_logs
+
+        nomes_processados = carregar_logs()
+    except Exception:
+        nomes_processados = set()
+
+    try:
+        extrator = ExtratorArquivos(
+            pasta_origem=pasta_imagens,
+            pasta_arquivo=ARCHIVE_FOLDER,
+            forcar=forcar,
+            nomes_processados=nomes_processados,
+        )
         arquivos_comprimidos = extrator.listar_arquivos_comprimidos()
 
         if not arquivos_comprimidos:
@@ -111,7 +126,7 @@ def extrair_arquivos_comprimidos(pasta_imagens, logs_callback=None, forcar=False
         }
 
 
-def executar_processamento_principal(modo_extracao=None):
+def executar_processamento_principal(modo_extracao=None, callback_progresso=None):
     """Executa o processamento principal importando e rodando o script original."""
     try:
         # Verificar e sincronizar configurações
@@ -164,19 +179,20 @@ def executar_processamento_principal(modo_extracao=None):
         # Executar a função principal do pipeline de extração
         from autoavaria.services.extraction_pipeline import main as executar_pipeline_extracao
 
-        executar_pipeline_extracao(modo_extracao)
+        sucesso_pipeline = executar_pipeline_extracao(
+            modo_extracao, callback_progresso=callback_progresso
+        )
 
-        # Verificar se o relatório foi gerado
-        if os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            log_aplicacao("✅ Relatório Excel gerado com sucesso!")
-            app_state.progresso_atual["logs"].append("✅ Relatório Excel gerado com sucesso!")
-            return True
-        else:
-            log_aplicacao("⚠️ Processamento concluído, mas relatório não foi encontrado")
+        if not sucesso_pipeline:
+            log_aplicacao("❌ O pipeline não concluiu a gravação dos resultados", "erro")
             app_state.progresso_atual["logs"].append(
-                "⚠️ Processamento concluído, mas relatório não foi encontrado"
+                "❌ O pipeline não concluiu a gravação dos resultados"
             )
             return False
+
+        log_aplicacao("✅ Pipeline concluído e resultados persistidos")
+        app_state.progresso_atual["logs"].append("✅ Pipeline concluído e resultados persistidos")
+        return True
 
     except Exception as e:
         erro_msg = f"Erro ao executar processamento: {str(e)}"
@@ -210,6 +226,8 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, 
             "progresso": 0,
             "status": "Iniciando processamento...",
             "logs": [],
+            "imagens_processadas": 0,
+            "total_imagens": 0,
         }
 
         # Limpar arquivo de cancelamento se existir
@@ -324,6 +342,8 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, 
         # nome de arquivo contra a linha inteira do log, o que nunca dava
         # match e fazia essa mensagem de progresso mentir).
         novas_imagens = listar_imagens_pendentes(DIRETORIO_IMAGENS)
+        app_state.progresso_atual["total_imagens"] = len(novas_imagens)
+        app_state.progresso_atual["imagens_processadas"] = 0
         app_state.progresso_atual["logs"].append(
             f"📝 {len(imagens) - len(novas_imagens)} imagens já foram processadas anteriormente"
         )
@@ -345,10 +365,31 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, 
 
         # Executar processamento principal
         app_state.progresso_atual["progresso"] = 30
-        app_state.progresso_atual["status"] = "🤖 Iniciando análise com IA Gemini..."
+        config = carregar_configuracao()
+        modo_atual = modo_extracao or config.get("processamento", {}).get("modo_extracao") or "ia"
+        nome_modo = {
+            "ia": "IA",
+            "hibrido": "modo híbrido",
+            "sem_ia": "leitura de código de barras",
+        }.get(modo_atual.lower(), modo_atual)
+        app_state.progresso_atual["status"] = f"🔎 Iniciando análise ({nome_modo})..."
         app_state.progresso_atual["logs"].append("⚙️ Carregando script de processamento...")
 
-        sucesso = executar_processamento_principal(modo_extracao)
+        def callback_progresso(info):
+            total = int(info.get("total") or 0)
+            atual = int(info.get("atual") or 0)
+            atual = min(max(atual, 0), total) if total else 0
+            progresso = 10 + round(85 * atual / total) if total else 95
+            app_state.progresso_atual.update({
+                "progresso": progresso,
+                "imagens_processadas": atual,
+                "total_imagens": total,
+                "status": f"Analisando {atual} de {total}: {info.get('arquivo', '')}",
+            })
+
+        sucesso = executar_processamento_principal(
+            modo_extracao, callback_progresso=callback_progresso
+        )
 
         if sucesso:
             app_state.progresso_atual["progresso"] = 100
@@ -376,8 +417,12 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, 
             else:
                 app_state.progresso_atual["logs"].append("⚠️ Relatório não foi gerado")
         else:
-            app_state.progresso_atual["status"] = "❌ Erro durante processamento"
-            app_state.progresso_atual["logs"].append("❌ Erro durante o processamento principal")
+            if app_state.processamento_cancelado:
+                app_state.progresso_atual["status"] = "⚠️ Processamento cancelado pelo usuário"
+                app_state.progresso_atual["logs"].append("⚠️ Processamento cancelado")
+            else:
+                app_state.progresso_atual["status"] = "❌ Erro durante processamento"
+                app_state.progresso_atual["logs"].append("❌ Erro durante o processamento principal")
 
     except Exception as e:
         erro_msg = f"Erro durante processamento: {str(e)}"
@@ -407,50 +452,58 @@ def iniciar_processamento():
             }
         )
 
-    if app_state.processamento_ativo:
-        return jsonify({"success": False, "message": "Processamento já em andamento"})
+    with app_state.processamento_lock:
+        if app_state.processamento_ativo:
+            return jsonify({"success": False, "message": "Processamento já em andamento"})
+        # Reserva o processamento antes do trabalho síncrono de extração dos
+        # arquivos compactados, evitando que dois POST iniciem dois pipelines.
+        app_state.processamento_ativo = True
 
-    # Verificar se há imagens para processar
-    if not os.path.exists(DIRETORIO_IMAGENS):
-        return jsonify({"success": False, "message": "Pasta de imagens não encontrada"})
-
-    # Modo de extração escolhido pelo usuário na tela de processamento (IA,
-    # sem IA ou híbrido). Se omitido, processar_em_background usa o padrão
-    # salvo em config/config.json. Lido uma única vez aqui e reaproveitado
-    # abaixo para não chamar request.get_json() duas vezes.
-    dados_requisicao = request.get_json(silent=True) or {}
-    modo_extracao = dados_requisicao.get("modo_extracao")
-    forcar_reprocessamento = bool(dados_requisicao.get("forcar_reprocessamento", False))
-
-    # Tentar extrair arquivos comprimidos antes de verificar imagens - precisa
-    # ser síncrono aqui para a checagem de "há imagens" logo abaixo enxergar
-    # o conteúdo já extraído. O resultado é repassado para a thread de
-    # processamento (processar_em_background) para ela não extrair tudo de
-    # novo - ver docstring de processar_em_background.
-    resultado_extracao = None
     try:
-        resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS, forcar=forcar_reprocessamento)
-        if resultado_extracao["arquivos_extraidos"] > 0:
-            print(f"✅ Extraídos {resultado_extracao['arquivos_extraidos']} arquivos comprimidos")
-    except Exception as e:
-        # Se houver erro na extração, continuar com o processamento normal
-        print(f"Aviso: Erro na extração de arquivos: {e}")
+        # Verificar se há imagens para processar
+        if not os.path.exists(DIRETORIO_IMAGENS):
+            return jsonify({"success": False, "message": "Pasta de imagens não encontrada"})
 
-    imagens = [
-        f for f in os.listdir(DIRETORIO_IMAGENS) if f.lower().endswith(EXTENSOES_IMAGEM)
-    ]
-    if not imagens:
-        return jsonify(
-            {"success": False, "message": "Nenhuma imagem encontrada para processar"}
+        # Modo de extração escolhido pelo usuário na tela de processamento (IA,
+        # sem IA ou híbrido). Se omitido, processar_em_background usa o padrão
+        # salvo em config/config.json. Lido uma única vez aqui e reaproveitado
+        # abaixo para não chamar request.get_json() duas vezes.
+        dados_requisicao = request.get_json(silent=True) or {}
+        modo_extracao = dados_requisicao.get("modo_extracao")
+        forcar_reprocessamento = bool(dados_requisicao.get("forcar_reprocessamento", False))
+
+        # Tentar extrair arquivos comprimidos antes de verificar imagens - precisa
+        # ser síncrono aqui para a checagem de "há imagens" logo abaixo enxergar
+        # o conteúdo já extraído. O resultado é repassado para a thread de
+        # processamento (processar_em_background) para ela não extrair tudo de
+        # novo - ver docstring de processar_em_background.
+        resultado_extracao = None
+        try:
+            resultado_extracao = extrair_arquivos_comprimidos(DIRETORIO_IMAGENS, forcar=forcar_reprocessamento)
+            if resultado_extracao["arquivos_extraidos"] > 0:
+                print(f"✅ Extraídos {resultado_extracao['arquivos_extraidos']} arquivos comprimidos")
+        except Exception as e:
+            # Se houver erro na extração, continuar com o processamento normal
+            print(f"Aviso: Erro na extração de arquivos: {e}")
+
+        imagens = [
+            f for f in os.listdir(DIRETORIO_IMAGENS) if f.lower().endswith(EXTENSOES_IMAGEM)
+        ]
+        if not imagens:
+            return jsonify(
+                {"success": False, "message": "Nenhuma imagem encontrada para processar"}
+            )
+
+        # Iniciar processamento em background
+        thread = threading.Thread(
+            target=processar_em_background, args=(modo_extracao, resultado_extracao, forcar_reprocessamento)
         )
+        thread.start()
 
-    # Iniciar processamento em background
-    thread = threading.Thread(
-        target=processar_em_background, args=(modo_extracao, resultado_extracao, forcar_reprocessamento)
-    )
-    thread.start()
-
-    return jsonify({"success": True, "message": "Processamento iniciado!"})
+        return jsonify({"success": True, "message": "Processamento iniciado!"})
+    except Exception as e:
+        app_state.processamento_ativo = False
+        return jsonify({"success": False, "message": f"Não foi possível iniciar o processamento: {e}"}), 500
 
 
 @app.route("/cancelar", methods=["POST"])
@@ -479,6 +532,7 @@ def obter_status():
     """Obtém o status atual do processamento."""
     # Adicionar informações extras ao progresso
     status_completo = app_state.progresso_atual.copy()
+    status_completo["ativo"] = app_state.processamento_ativo
 
     # Adicionar contagem de imagens
     if os.path.exists(DIRETORIO_IMAGENS):
@@ -487,8 +541,10 @@ def obter_status():
             for f in os.listdir(DIRETORIO_IMAGENS)
             if f.lower().endswith(EXTENSOES_IMAGEM)
         ]
-        status_completo["total_imagens"] = len(imagens)
+        status_completo["imagens_na_pasta"] = len(imagens)
     else:
-        status_completo["total_imagens"] = 0
+        status_completo["imagens_na_pasta"] = 0
+
+    status_completo.setdefault("total_imagens", status_completo["imagens_na_pasta"])
 
     return jsonify(status_completo)

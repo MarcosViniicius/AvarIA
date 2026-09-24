@@ -12,7 +12,6 @@ confundidas nem unificadas.
 import os
 import json
 import time
-from functools import lru_cache
 
 from ..core.paths import CONFIG_FILE as CONFIG_FILE_PATH
 from .ai import obter_api_key_do_provedor
@@ -25,7 +24,6 @@ _config_cache_time = None
 CONFIG_CACHE_TTL = 300  # 5 minutos
 
 
-@lru_cache(maxsize=1)
 def carregar_configuracao():
     """Carrega configurações do arquivo JSON com cache."""
     global _config_cache, _config_cache_time
@@ -86,14 +84,15 @@ def carregar_configuracao():
                                 config[key][subkey] = config_padrao[key][subkey]
 
                 # Priorizar variáveis de ambiente
-                if os.environ.get("GEMINI_API_KEY"):
-                    config["api"]["gemini_api_key"] = os.environ.get("GEMINI_API_KEY")
-                if os.environ.get("OPENAI_API_KEY"):
-                    config["api"]["openai_api_key"] = os.environ.get("OPENAI_API_KEY")
-                if os.environ.get("ANTHROPIC_API_KEY"):
-                    config["api"]["anthropic_api_key"] = os.environ.get(
-                        "ANTHROPIC_API_KEY"
-                    )
+                variaveis_api = {
+                    "GEMINI_API_KEY": "gemini_api_key",
+                    "OPENAI_API_KEY": "openai_api_key",
+                    "ANTHROPIC_API_KEY": "anthropic_api_key",
+                    "OPENROUTER_API_KEY": "openrouter_api_key",
+                }
+                for variavel, campo in variaveis_api.items():
+                    if os.environ.get(variavel):
+                        config["api"][campo] = os.environ[variavel]
 
                 # Atualizar cache
                 _config_cache = config
@@ -129,8 +128,6 @@ def salvar_configuracao(config):
         # Limpar cache
         _config_cache = None
         _config_cache_time = None
-        carregar_configuracao.cache_clear()
-
         return True
     except Exception as e:
         print(f"Erro ao salvar configuração: {e}")

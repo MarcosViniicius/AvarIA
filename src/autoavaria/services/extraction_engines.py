@@ -27,6 +27,7 @@ Os três motores:
 """
 
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -54,6 +55,41 @@ def _quantidade_do_contexto(contexto: Optional[ContextoImagem]) -> int:
     if contexto is None or contexto.quantidade is None:
         return 1
     return contexto.quantidade
+
+
+def _categoria_do_contexto(contexto: Optional[ContextoImagem]) -> Optional[str]:
+    """Reconhece apenas sinais explícitos de categoria na conversa.
+
+    Um EAN identifica o produto, mas por si só não diz se ele foi avariado ou
+    separado para uso interno. Se o texto não resolver essa distinção, o
+    motor híbrido deve consultar a IA e o modo sem IA deve pedir revisão.
+    """
+    texto = contexto.texto.lower() if contexto else ""
+    texto = re.sub(r"\s+", " ", texto)
+    sinais_avaria = (
+        "avaria", "avariado", "avariada", "quebrado", "quebrada", "quebra",
+        "estragado", "estragada", "danificado", "danificada", "vencido",
+        "vencida", "perda", "perdas", "descarte",
+    )
+    sinais_uso_interno = (
+        "uso interno", "consumo interno", "consumo da equipe", "consumo da equipa",
+        "para a equipe", "para a equipa", "funcionários", "funcionarios",
+    )
+
+    if any(sinal in texto for sinal in sinais_avaria):
+        return "Avaria"
+    if any(sinal in texto for sinal in sinais_uso_interno):
+        return "Uso Interno"
+    return None
+
+
+def _categoria_catalogo(entrada: Dict[str, Any]) -> Optional[str]:
+    categoria = str(entrada.get("categoria_padrao") or "").strip().lower()
+    if categoria in {"avaria", "avarias"}:
+        return "Avaria"
+    if categoria in {"uso interno", "uso_interno"}:
+        return "Uso Interno"
+    return None
 
 
 class MotorExtracao(ABC):
@@ -131,25 +167,45 @@ class MotorCodigoBarras(MotorExtracao):
             }
 
         quantidade = _quantidade_do_contexto(contexto)
-        itens_avaria: List[Dict[str, Any]] = []
-        itens_uso: List[Dict[str, Any]] = []
+        itens_por_categoria: Dict[str, List[Dict[str, Any]]] = {
+            "Avaria": [],
+            "Uso Interno": [],
+        }
 
         for codigo in codigos:
             if codigo.eh_balanca:
                 item = self._item_de_balanca(codigo.texto, quantidade)
                 if item:
-                    itens_avaria.append(item)
+                    itens_por_categoria["Avaria"].append(item)
             else:
-                itens_uso.append(self._item_de_ean(codigo.texto, quantidade))
+                entrada = catalogo.buscar(codigo.texto) or {}
+                categoria = _categoria_do_contexto(contexto) or _categoria_catalogo(entrada)
+                if categoria is None:
+                    return {
+                        "tipo": "Erro",
+                        "detalhes": (
+                            "O código de barras identifica o produto, mas não informa se é Avaria "
+                            "ou Uso Interno. Inclua essa indicação na mensagem ou use o modo híbrido."
+                        ),
+                    }
+                itens_por_categoria[categoria].append(
+                    self._item_de_ean(codigo.texto, quantidade, entrada)
+                )
 
-        # Uma foto pode conter etiqueta de balança e código comum; classificamos
-        # pela que predominar, mantendo o formato de saída de sempre.
-        if itens_avaria and not itens_uso:
-            return {"tipo": "Avaria", "itens": itens_avaria}
-        if itens_uso and not itens_avaria:
-            return {"tipo": "Uso Interno", "itens": itens_uso}
+        itens_avaria = itens_por_categoria["Avaria"]
+        itens_uso = itens_por_categoria["Uso Interno"]
         if itens_avaria and itens_uso:
-            return {"tipo": "Avaria", "itens": itens_avaria + itens_uso}
+            return {
+                "tipo": "Misto",
+                "itens": [
+                    *[dict(item, categoria="Avaria") for item in itens_avaria],
+                    *[dict(item, categoria="Uso Interno") for item in itens_uso],
+                ],
+            }
+        if itens_avaria:
+            return {"tipo": "Avaria", "itens": itens_avaria}
+        if itens_uso:
+            return {"tipo": "Uso Interno", "itens": itens_uso}
 
         return {
             "tipo": "Erro",
@@ -186,14 +242,16 @@ class MotorCodigoBarras(MotorExtracao):
             "_catalogo_atualizado_em": entrada.get("atualizado_em"),
         }
 
-    def _item_de_ean(self, codigo: str, quantidade: int) -> Dict[str, Any]:
+    def _item_de_ean(
+        self, codigo: str, quantidade: int, entrada: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Monta um item de uso interno a partir de um EAN-13 comum.
 
         Mesmo sem o produto cadastrado o item é útil: o código de barras é,
         por si só, a identificação precisa do produto — é exatamente o que a
         planilha já registrava como dado principal desta aba.
         """
-        entrada = catalogo.buscar(codigo) or {}
+        entrada = entrada or catalogo.buscar(codigo) or {}
         return {
             "produto": entrada.get("produto") or "N/A",
             "marca": entrada.get("marca") or "N/A",
@@ -314,6 +372,7 @@ def _aprender_do_resultado(resultados: Dict[str, Any]) -> None:
             codigo = str(item.get("codigo_barras") or "").strip()
             if not barcode.ean13_valido(codigo):
                 continue
+            categoria_item = item.get("categoria") or categoria
             try:
                 if barcode.eh_etiqueta_balanca(codigo):
                     _aprender_balanca(codigo, item)
@@ -322,7 +381,7 @@ def _aprender_do_resultado(resultados: Dict[str, Any]) -> None:
                         codigo=codigo,
                         produto=str(item.get("produto") or ""),
                         marca=str(item.get("marca") or ""),
-                        categoria="Uso Interno" if categoria == "Uso Interno" else categoria,
+                        categoria="Uso Interno" if categoria_item == "Uso Interno" else categoria_item,
                     )
             except Exception as e:  # nunca deixar o aprendizado quebrar o processamento
                 print(f"⚠️ Não foi possível atualizar o catálogo para {codigo}: {e}")
