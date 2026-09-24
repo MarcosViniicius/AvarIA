@@ -8,7 +8,7 @@ const CONFIG = {
   progressUpdateInterval: 2000, // 2 segundos - reduzido para menor carga
   alertAutoHideTime: 4000, // 4 segundos
   animationDelay: 50, // 50ms entre animações - mais rápido
-  maxRetries: 2, // Reduzido tentativas
+  maxRetries: 6,
   retryDelay: 1500, // Delay menor
   debounceDelay: 300, // Para inputs de busca
   throttleDelay: 100, // Para scroll events
@@ -24,6 +24,10 @@ const APP_STATE = {
   allowModalManagement: true, // Flag para controlar se deve gerenciar modais
 };
 
+// Seletor dos botões de processamento (era string duplicada em
+// setupEventListeners e finalizarMonitoramento).
+const PROCESS_BUTTON_SELECTOR = '[id*="process"], [class*="process"]';
+
 /**
  * Inicialização da aplicação
  */
@@ -38,6 +42,9 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 function initializeApp() {
   console.log("🚀 Inicializando Analisador de Avarias...");
+
+  setupThemeToggle();
+  hoistModalsToBody();
 
   // Detectar se estamos em páginas específicas que gerenciam seus próprios modais
   const currentPage = window.location.pathname;
@@ -56,11 +63,15 @@ function initializeApp() {
     requestIdleCallback(() => {
       setupBootstrapComponents();
       checkProcessingStatus();
+      setupResponsiveTables();
+      setupScrollShadows();
     });
   } else {
     setTimeout(() => {
       setupBootstrapComponents();
       checkProcessingStatus();
+      setupResponsiveTables();
+      setupScrollShadows();
     }, 100);
   }
 
@@ -99,13 +110,138 @@ function setupBootstrapComponents() {
 }
 
 /**
+ * Move os modais declarados dentro do <main> para o fim do <body>.
+ *
+ * Motivo: qualquer ancestral com `transform`/`filter`/`backdrop-filter` cria um
+ * contexto de empilhamento. Como os cards usam animação com `transform`, um
+ * modal declarado dentro do conteúdo ficava preso abaixo da navbar sticky — no
+ * celular o cabeçalho do modal de imagem aparecia atrás dela. Movendo o modal
+ * para o <body>, ele volta ao contexto de empilhamento de topo (z-index 1055).
+ */
+function hoistModalsToBody() {
+  document.querySelectorAll(".modal").forEach((modal) => {
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
+  });
+}
+
+/**
+ * Alternância de tema (Sistema / Claro / Escuro) com persistência em
+ * localStorage. O tema inicial já é aplicado por um script inline no <head>
+ * para evitar flash; aqui sincronizamos o menu e tratamos os cliques.
+ */
+function setupThemeToggle() {
+  const root = document.documentElement;
+  const items = Array.from(document.querySelectorAll("[data-tema]"));
+  if (items.length === 0) return;
+
+  const mq =
+    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+
+  const ler = () => {
+    try {
+      return localStorage.getItem("autoavaria-theme") || "escuro";
+    } catch (e) {
+      return "escuro";
+    }
+  };
+
+  const resolver = (pref) => {
+    if (pref === "sistema") return mq && mq.matches ? "dark" : "light";
+    return pref === "claro" ? "light" : "dark";
+  };
+
+  const aplicar = (pref) => {
+    const tema = resolver(pref);
+    root.setAttribute("data-theme", tema);
+    root.setAttribute("data-theme-pref", pref);
+    items.forEach((el) =>
+      el.classList.toggle("active", el.getAttribute("data-tema") === pref)
+    );
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", tema === "light" ? "#f6f8f7" : "#0a0c0c");
+    }
+  };
+
+  items.forEach((el) => {
+    el.addEventListener("click", () => {
+      const pref = el.getAttribute("data-tema");
+      try {
+        localStorage.setItem("autoavaria-theme", pref);
+      } catch (e) {
+        /* localStorage indisponível: aplica só nesta sessão */
+      }
+      aplicar(pref);
+    });
+  });
+
+  aplicar(ler());
+
+  if (mq) {
+    const onChange = () => {
+      if (ler() === "sistema") aplicar("sistema");
+    };
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+}
+
+/**
+ * Preenche data-label nas células de uma tabela a partir dos títulos do thead,
+ * habilitando o layout de cards empilhados no mobile (.table-stack).
+ */
+function applyTableLabels(table, headers) {
+  table.querySelectorAll("tbody tr").forEach((row) => {
+    Array.from(row.children).forEach((cell, index) => {
+      if (cell.tagName !== "TD" || cell.hasAttribute("data-label")) return;
+      const label = headers[index];
+      if (label) cell.setAttribute("data-label", label);
+    });
+  });
+}
+
+/**
+ * Configura as tabelas responsivas: lê o cabeçalho uma vez e mantém os rótulos
+ * atualizados quando linhas são adicionadas dinamicamente (ex.: editar_dados).
+ */
+function setupResponsiveTables() {
+  document.querySelectorAll("table.table-stack").forEach((table) => {
+    const headers = Array.from(table.querySelectorAll("thead th")).map((th) =>
+      th.textContent.replace(/\s+/g, " ").trim()
+    );
+    if (headers.length === 0) return;
+
+    applyTableLabels(table, headers);
+
+    if (!("MutationObserver" in window)) return;
+    table.querySelectorAll("tbody").forEach((tbody) => {
+      new MutationObserver(() => applyTableLabels(table, headers)).observe(
+        tbody,
+        { childList: true }
+      );
+    });
+  });
+}
+
+/**
+ * Adiciona sombra lateral nas tabelas que realmente rolam na horizontal,
+ * sinalizando que há mais colunas fora da tela (importante no mobile).
+ */
+function setupScrollShadows() {
+  document.querySelectorAll(".table-responsive").forEach((el) => {
+    const overflow = el.scrollWidth > el.clientWidth + 2;
+    el.classList.toggle("has-scroll", overflow);
+  });
+}
+
+/**
  * Configura os event listeners globais
  */
 function setupEventListeners() {
   // Prevenir múltiplos cliques em botões de processamento
-  const processButtons = document.querySelectorAll(
-    '[id*="process"], [class*="process"]'
-  );
+  const processButtons = document.querySelectorAll(PROCESS_BUTTON_SELECTOR);
   processButtons.forEach((btn) => {
     btn.addEventListener("click", debounce(handleProcessClick, 1000));
   });
@@ -129,6 +265,9 @@ function setupEventListeners() {
   // Configurar tratamento de erros globais
   window.addEventListener("error", handleGlobalError);
   window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+  // Recalcular as sombras de rolagem das tabelas ao redimensionar
+  window.addEventListener("resize", throttle(setupScrollShadows, 200));
 }
 
 /**
@@ -310,6 +449,7 @@ function iniciarPollingDeStatus() {
     fetch("/status")
       .then((response) => response.json())
       .then((data) => {
+        APP_STATE.retryCount = 0;
         updateProgressUI(data);
 
         if (
@@ -326,11 +466,11 @@ function iniciarPollingDeStatus() {
         APP_STATE.retryCount++;
 
         if (APP_STATE.retryCount >= CONFIG.maxRetries) {
-          finalizarMonitoramento({
-            status: "Erro de conexão",
-            progresso: 0,
-            logs: ["❌ Falha na comunicação com o servidor"],
-          });
+          const progressStatus = document.getElementById("progressStatus");
+          if (progressStatus) {
+            progressStatus.textContent =
+              "Conexão interrompida; tentando reconectar ao processamento...";
+          }
         }
       });
   }, CONFIG.progressUpdateInterval);
@@ -452,7 +592,10 @@ function updateProgressUI(data) {
         }
 
         logEntry.className = `${logClass} mb-1`;
-        logEntry.innerHTML = `<small>[${timestamp}]</small> ${log}`;
+        const time = document.createElement("small");
+        time.textContent = `[${timestamp}] `;
+        logEntry.appendChild(time);
+        logEntry.appendChild(document.createTextNode(log));
         progressLogs.appendChild(logEntry);
       }
     });
@@ -473,25 +616,27 @@ function updateProgressUI(data) {
         .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
     }
 
-    // Calcular ETA baseado no progresso
-    if (statsETA && progresso > 0 && progresso < 100) {
-      const totalEstimated = (elapsed / progresso) * 100;
-      const remaining = Math.max(0, totalEstimated - elapsed);
+    const imagensProcessadas = Number(data.imagens_processadas || 0);
+    const totalImagens = Number(data.total_imagens || 0);
+    if (statsImagens && totalImagens > 0) {
+      statsImagens.textContent = `${imagensProcessadas}/${totalImagens}`;
+    }
+
+    // Estima com a taxa observada por imagem; não apresenta ETA até haver
+    // amostra suficiente, evitando extrapolar o progresso das etapas iniciais.
+    if (statsETA && totalImagens > 0 && imagensProcessadas >= 2 && imagensProcessadas < totalImagens) {
+      const segundosPorImagem = elapsed / imagensProcessadas;
+      const remaining = Math.max(0, (totalImagens - imagensProcessadas) * segundosPorImagem);
       const etaMinutes = Math.floor(remaining / 60);
       const etaSeconds = Math.floor(remaining % 60);
-      statsETA.textContent = `${etaMinutes
-        .toString()
-        .padStart(2, "0")}:${etaSeconds.toString().padStart(2, "0")}`;
-    } else if (statsETA && progresso >= 100) {
+      statsETA.textContent = `${etaMinutes.toString().padStart(2, "0")}:${etaSeconds.toString().padStart(2, "0")}`;
+    } else if (statsETA && imagensProcessadas >= totalImagens && progresso >= 100) {
       statsETA.textContent = "Concluído!";
+    } else if (statsETA && totalImagens > 0) {
+      statsETA.textContent = "Estimando...";
     }
   }
 
-  // Estatísticas de imagens (se disponível nos dados)
-  if (statsImagens && data.total_imagens) {
-    const processadas = Math.floor((progresso / 100) * data.total_imagens);
-    statsImagens.textContent = `${processadas}/${data.total_imagens}`;
-  }
 }
 
 /**
@@ -512,6 +657,9 @@ function finalizarMonitoramento(data) {
     cancelarBtn.style.display = "none";
   }
 
+  const isSuccess = data.progresso >= 100 && !String(data.status || "").includes("Erro");
+  const delayFinalizacao = isSuccess ? 2000 : 1000;
+
   // Aguardar um momento antes de fechar o modal
   setTimeout(
     () => {
@@ -521,8 +669,7 @@ function finalizarMonitoramento(data) {
       }
 
       // Mostrar resultado final
-      const isSuccess = data.progresso >= 100 && !data.status.includes("Erro");
-      const isCanceled = data.status.includes("cancelado");
+      const isCanceled = String(data.status || "").includes("cancelado");
       const message = isCanceled
         ? "Processamento cancelado pelo usuário"
         : isSuccess
@@ -537,15 +684,13 @@ function finalizarMonitoramento(data) {
       }
 
       // Reabilitar botões de processamento
-      const processButtons = document.querySelectorAll(
-        '[id*="process"], [class*="process"]'
-      );
+      const processButtons = document.querySelectorAll(PROCESS_BUTTON_SELECTOR);
       processButtons.forEach((btn) => {
         btn.disabled = false;
         btn.innerHTML = btn.innerHTML.replace(/Iniciando\.\.\./g, "Processar");
       });
     },
-    isSuccess ? 2000 : 1000
+    delayFinalizacao
   );
 }
 
@@ -577,13 +722,13 @@ function showAlert(type, message, options = {}) {
   // Posicionamento
   const positionStyles = {
     "top-right":
-      "position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 400px;",
+      "position: fixed; top: 20px; right: 20px; z-index: 1080; max-width: min(400px, calc(100vw - 2rem));",
     "top-left":
-      "position: fixed; top: 20px; left: 20px; z-index: 9999; max-width: 400px;",
+      "position: fixed; top: 20px; left: 20px; z-index: 1080; max-width: min(400px, calc(100vw - 2rem));",
     "bottom-right":
-      "position: fixed; bottom: 20px; right: 20px; z-index: 9999; max-width: 400px;",
+      "position: fixed; bottom: 20px; right: 20px; z-index: 1080; max-width: min(400px, calc(100vw - 2rem));",
     "bottom-left":
-      "position: fixed; bottom: 20px; left: 20px; z-index: 9999; max-width: 400px;",
+      "position: fixed; bottom: 20px; left: 20px; z-index: 1080; max-width: min(400px, calc(100vw - 2rem));",
   };
 
   alertDiv.style.cssText =

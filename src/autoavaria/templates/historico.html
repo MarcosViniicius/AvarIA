@@ -1,85 +1,85 @@
 {% extends "base.html" %} {% block title %}Histórico - Analisador de Avarias{%
 endblock %} {% block content %}
 <div class="row">
-  <div class="col-12 mb-4">
-    <div class="d-flex justify-content-between align-items-center">
+  <div class="col-12">
+    <div class="page-header">
       <div>
-        <h1 class="h2 mb-1">
-          <i class="bi bi-clock-history text-primary me-2"></i>Histórico de Relatórios
-        </h1>
-        <p class="text-muted">
+        <h1><i class="bi bi-clock-history text-primary"></i>Histórico</h1>
+        <p class="page-subtitle">
           Execuções de processamento e relatórios unificados gerados ao longo do tempo
         </p>
       </div>
-      <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-outline-primary">
-        <i class="bi bi-file-earmark-excel"></i> Relatório Atual
-      </a>
+      <div class="page-actions">
+        <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-outline-primary">
+          <i class="bi bi-file-earmark-spreadsheet"></i> Relatório atual
+        </a>
+      </div>
     </div>
   </div>
 
   <!-- Resumo Geral -->
   <div class="col-12 mb-4">
-    <div class="row">
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-play-circle text-primary"></i></div>
-            <h3 class="mb-1">{{ resumo.totais.total_execucoes }}</h3>
-            <h6 class="text-muted small mb-0">Execuções</h6>
+    <div class="row g-3">
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-primary"><i class="bi bi-play-circle"></i></span>
+            <p class="metric-value">{{ resumo.totais.total_execucoes }}</p>
+            <div class="metric-label mb-0">Execuções</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-exclamation-triangle text-danger"></i></div>
-            <h3 class="mb-1">{{ resumo.totais.total_avarias }}</h3>
-            <h6 class="text-muted small mb-0">Avarias</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-danger"><i class="bi bi-exclamation-triangle"></i></span>
+            <p class="metric-value">{{ resumo.totais.total_avarias }}</p>
+            <div class="metric-label mb-0">Avarias</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-building text-info"></i></div>
-            <h3 class="mb-1">{{ resumo.totais.total_uso_interno }}</h3>
-            <h6 class="text-muted small mb-0">Uso Interno</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-info"><i class="bi bi-box-seam"></i></span>
+            <p class="metric-value">{{ resumo.totais.total_uso_interno }}</p>
+            <div class="metric-label mb-0">Uso interno</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-x-circle text-warning"></i></div>
-            <h3 class="mb-1">{{ resumo.totais.total_erros }}</h3>
-            <h6 class="text-muted small mb-0">Erros</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-warning"><i class="bi bi-x-circle"></i></span>
+            <p class="metric-value">{{ resumo.totais.total_erros }}</p>
+            <div class="metric-label mb-0">Erros</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-coin text-success"></i></div>
-            <h3 class="mb-1">{{ "{:,}".format(resumo.totais.total_tokens) }}</h3>
-            <h6 class="text-muted small mb-0">Tokens (IA)</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-success"><i class="bi bi-coin"></i></span>
+            <p class="metric-value">{{ "{:,}".format(resumo.totais.total_tokens) }}</p>
+            <div class="metric-label mb-0">Tokens (IA)</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-funnel text-primary"></i></div>
-            <h3 class="mb-1">{{ resumo.total_relatorios_unificados }}</h3>
-            <h6 class="text-muted small mb-0">Unificados</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-primary"><i class="bi bi-funnel"></i></span>
+            <p class="metric-value">{{ resumo.total_relatorios_unificados }}</p>
+            <div class="metric-label mb-0">Unificados</div>
           </div>
         </div>
       </div>
-      <div class="col-md-2 col-sm-4 mb-3">
-        <div class="card border-0 shadow-sm h-100 text-center">
-          <div class="card-body">
-            <div class="display-6 mb-2"><i class="bi bi-speedometer2 text-danger"></i></div>
-            <h3 class="mb-1">{{ "%.1f"|format(resumo.totais.peso_total_avarias_kg) }} kg</h3>
-            <h6 class="text-muted small mb-0">Peso Total em Avarias</h6>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <span class="metric-icon mx-auto mb-2 text-danger"><i class="bi bi-speedometer2"></i></span>
+            <p class="metric-value">{{ "%.1f"|format(resumo.totais.peso_total_avarias_kg) }}<span class="fs-6 ms-1">kg</span></p>
+            <div class="metric-label mb-0">Peso em avarias</div>
           </div>
         </div>
       </div>
@@ -96,7 +96,7 @@ endblock %} {% block content %}
         </div>
         <div class="card-body p-0">
           <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="table table-hover mb-0 align-middle table-stack">
               <thead class="table-light">
                 <tr>
                   <th>Mês</th>
@@ -157,7 +157,7 @@ endblock %} {% block content %}
       <div class="card-body p-0">
         {% if execucoes %}
         <div class="table-responsive">
-          <table class="table table-hover mb-0 align-middle">
+          <table class="table table-hover mb-0 align-middle table-stack">
             <thead class="table-light">
               <tr>
                 <th>Início</th>
@@ -209,9 +209,9 @@ endblock %} {% block content %}
           </table>
         </div>
         {% else %}
-        <div class="text-center text-muted py-5">
-          <i class="bi bi-inbox display-4 d-block mb-2"></i>
-          Nenhuma execução de processamento registrada ainda.
+        <div class="empty-state">
+          <span class="empty-icon"><i class="bi bi-inbox"></i></span>
+          <p class="empty-title mb-0">Nenhuma execução de processamento registrada ainda.</p>
         </div>
         {% endif %}
       </div>
@@ -227,10 +227,11 @@ endblock %} {% block content %}
       <div class="card-body p-0">
         {% if relatorios_unificados %}
         <div class="table-responsive">
-          <table class="table table-hover mb-0 align-middle">
+          <table class="table table-hover mb-0 align-middle table-stack">
             <thead class="table-light">
               <tr>
                 <th>Gerado em</th>
+                <th>Escopo</th>
                 <th>Arquivos</th>
                 <th></th>
               </tr>
@@ -239,6 +240,18 @@ endblock %} {% block content %}
               {% for rel in relatorios_unificados %}
               <tr>
                 <td>{{ rel.criado_em }}</td>
+                <td>
+                  {% if rel.resumo and rel.resumo.escopo == 'execucao' %}
+                  <span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+                    <i class="bi bi-play-circle"></i>
+                    Execução #{{ rel.resumo.execucao_id }}
+                  </span>
+                  {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+                    <i class="bi bi-collection"></i> Histórico completo
+                  </span>
+                  {% endif %}
+                </td>
                 <td>
                   {% if rel.arquivo_xlsx %}
                   <span class="badge bg-success-subtle text-success-emphasis me-1">
@@ -269,9 +282,10 @@ endblock %} {% block content %}
           </table>
         </div>
         {% else %}
-        <div class="text-center text-muted py-5">
-          <i class="bi bi-inbox display-4 d-block mb-2"></i>
-          Nenhum relatório unificado gerado ainda. Use o botão "Unificar Relatório" na tela de Relatório.
+        <div class="empty-state">
+          <span class="empty-icon"><i class="bi bi-funnel"></i></span>
+          <p class="empty-title mb-1">Nenhum relatório unificado gerado ainda.</p>
+          <p class="mb-0">Use o botão "Unificar Relatório" na tela de Relatório.</p>
         </div>
         {% endif %}
       </div>

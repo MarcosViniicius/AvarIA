@@ -1,0 +1,312 @@
+/* overlays.css - progresso, modais, dropdowns, modal de imagem + console.
+   O console mora aqui (e nao num CSS de pagina) porque o modal de
+   progresso existe no base.html e pode abrir em qualquer pagina. */
+/* 9. Progresso / modais / dropdowns ---------------------------------------- */
+.progress {
+  height: 0.75rem;
+  background: var(--hover-2);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.progress-bar {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  transition: width 0.5s var(--ease-out);
+}
+.progress-bar.bg-primary {
+  background: var(--accent);
+}
+.progress-bar.bg-success {
+  background: var(--accent);
+}
+.progress-bar.bg-warning {
+  background: var(--warning);
+}
+.progress-bar.bg-danger {
+  background: var(--danger);
+}
+.progress-bar.bg-secondary {
+  background: var(--text-3);
+}
+.progress-bar-striped {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.16) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.16) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+}
+
+.modal-content {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  color: var(--text-2);
+}
+
+.modal-header,
+.modal-footer {
+  border-color: var(--line);
+  padding: 1rem 1.25rem;
+}
+.modal-header {
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.modal-footer {
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+.modal-title {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 1rem;
+}
+.modal-body {
+  padding: 1.25rem;
+  color: var(--text-2);
+}
+.modal-backdrop.show {
+  opacity: 0.7;
+}
+
+/* ---- Modal de imagem + dados do item -------------------------------------
+   Layout: no desktop a foto fica à esquerda e a tabela de dados à direita; no
+   celular empilham, com a foto limitada para que foto + tabela caibam na tela
+   sem rolagem. As alturas usam dvh (não vh) para não pular com a barra do
+   navegador no iOS. */
+#imageModal .modal-dialog {
+  display: flex;
+  align-items: center;
+  height: auto;
+  margin: 0.5rem auto;
+}
+#imageModal .modal-content {
+  height: auto;
+  max-height: calc(100dvh - 1rem);
+}
+#imageModal .modal-header,
+#imageModal .modal-footer {
+  padding: 0.5rem 0.7rem;
+}
+#imageModal .modal-body {
+  padding: 0.6rem 0.7rem;
+  overflow: hidden;
+}
+#imageModal .modal-title {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+#imageModal .modal-header {
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+#imageModal .imagem-modal-nome {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+#imageModal .imagem-modal-conteudo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+  max-height: min(64dvh, 560px);
+}
+#imageModal .imagem-modal-figura {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+#imageModal .imagem-modal-foto {
+  max-width: 100%;
+  /* Limita a altura também no desktop: sem isso a foto de retrato esticava o
+     modal até quase encostar no topo da janela. */
+  max-height: min(64dvh, 560px);
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+/* Tabela de dados: rótulo à esquerda, valor à direita, sem quebrar linha. */
+.imagem-modal-dados {
+  min-width: 0;
+  max-height: min(64dvh, 560px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.imagem-modal-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.imagem-modal-tabela tr + tr th,
+.imagem-modal-tabela tr + tr td {
+  border-top: 1px solid var(--line);
+}
+.imagem-modal-tabela th,
+.imagem-modal-tabela td {
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+.imagem-modal-tabela th {
+  width: 40%;
+  color: var(--text-3);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.imagem-modal-tabela td {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.imagem-modal-vazio {
+  padding: 0.7rem;
+  color: var(--text-3);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 767.98px) {
+  #imageModal .modal-dialog {
+    margin: 0.35rem auto;
+    max-width: calc(100vw - 0.7rem);
+  }
+  /* Empilhado: a foto ocupa o espaço que sobra depois da tabela. */
+  #imageModal .imagem-modal-conteudo {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    max-height: calc(100dvh - 7.5rem);
+  }
+  #imageModal .imagem-modal-figura {
+    max-height: 42dvh;
+    overflow: hidden;
+  }
+  #imageModal .imagem-modal-foto {
+    max-height: 42dvh;
+  }
+  #imageModal .imagem-modal-dados {
+    max-height: calc(100dvh - 7.5rem - 42dvh);
+  }
+  #imageModal .modal-footer .btn {
+    flex: 1 1 0;
+    padding-block: 0.4rem;
+  }
+  .imagem-modal-tabela {
+    font-size: 0.78rem;
+  }
+  .imagem-modal-tabela th {
+    width: 44%;
+    font-size: 0.66rem;
+  }
+}
+
+.dropdown-menu {
+  --bs-dropdown-bg: var(--surface-2);
+  --bs-dropdown-border-color: var(--line-2);
+  --bs-dropdown-link-color: var(--text-2);
+  --bs-dropdown-link-hover-bg: var(--hover-2);
+  --bs-dropdown-link-hover-color: var(--text);
+  --bs-dropdown-link-active-bg: var(--accent-soft);
+  --bs-dropdown-link-active-color: var(--accent-hi);
+  --bs-dropdown-divider-bg: var(--line);
+  padding: 0.35rem;
+  border-radius: var(--r);
+  box-shadow: var(--shadow-2);
+}
+.dropdown-item {
+  border-radius: var(--r-xs);
+  font-size: 0.88rem;
+}
+
+.tooltip {
+  --bs-tooltip-bg: var(--surface-3);
+  --bs-tooltip-color: var(--text);
+  --bs-tooltip-opacity: 1;
+  --bs-tooltip-border-radius: var(--r-sm);
+}
+
+/* Console de atividade (era parte da secao 11). */
+/* O console é sempre escuro (mesmo no tema claro) para manter a leitura dos
+   logs — por isso usa cores fixas, não tokens de tema. */
+.console {
+  background: var(--console-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: #a7b0ad;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  padding: 0.9rem;
+  overflow: auto;
+}
+
+.console .log-entry {
+  margin: 0 0 0.15rem;
+  padding: 0.1rem 0.5rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+}
+.console .log-processado {
+  border-left-color: #2fbe8a;
+  background: rgba(47, 190, 138, 0.07);
+}
+.console .log-progresso {
+  border-left-color: #5fa8d3;
+  background: rgba(95, 168, 211, 0.07);
+}
+.console .log-consumo {
+  border-left-color: #d9a24a;
+  background: rgba(217, 162, 74, 0.07);
+}
+.console .log-erro {
+  border-left-color: #e5484d;
+  background: rgba(229, 72, 77, 0.08);
+}
+.console .log-timestamp {
+  color: #7f8a86;
+  font-size: 0.72rem;
+}
+
+/* Classes de texto usadas dentro do console pelo JS precisam continuar claras. */
+.console .text-light {
+  color: #cfd6d3 !important;
+}
+.console .text-muted {
+  color: #7f8a86 !important;
+}
+.console .text-success {
+  color: #45d6a0 !important;
+}
+.console .text-info {
+  color: #6bb6dd !important;
+}
+.console .text-warning {
+  color: #e6b463 !important;
+}
+.console .text-danger {
+  color: #ef7b7f !important;
+}

@@ -1,0 +1,211 @@
+/* responsive.css - todo o CSS condicional junto: tabelas empilhadas
+   no mobile, media queries gerais e impressao/movimento reduzido.
+   Carregado por ultimo no nucleo para manter a precedencia. */
+/* Tabelas empilhadas no mobile (.table-stack): cada linha vira um card com o
+   rótulo da coluna (data-label) acima do valor. O data-label é preenchido por
+   setupResponsiveTables() em main.js a partir do <thead>, então os templates
+   não precisam repetir rótulos em cada <td>. */
+@media (max-width: 767.98px) {
+  .table-stack {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+  .table-stack thead {
+    display: none;
+  }
+  .table-stack tbody,
+  .table-stack tr {
+    display: block;
+    width: 100%;
+  }
+  .table-stack tbody {
+    background: transparent;
+  }
+  .table-stack tr {
+    margin-bottom: 0.5rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .table-stack tr:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Cada campo vira UMA linha: rótulo à esquerda, valor à direita. Antes o
+     rótulo ficava acima do valor (block), o que fazia cada item ocupar ~420px
+     no celular — quase meia tela por produto. */
+  .table-stack td {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: 0.5rem;
+    padding: 0.2rem 0.6rem !important;
+    border: none !important;
+    border-bottom: 1px solid var(--line) !important;
+    text-align: left !important;
+    white-space: normal !important;
+    font-size: 0.84rem;
+    line-height: 1.3;
+  }
+  .table-stack td:last-child {
+    border-bottom: none !important;
+  }
+  .table-stack td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: 0.63rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .table-stack td:not([data-label])::before,
+  .table-stack td[data-label=""]::before {
+    display: none;
+  }
+  /* O valor ocupa a coluna da direita e pode quebrar quando for longo. */
+  .table-stack td > * {
+    grid-column: 2;
+    min-width: 0;
+  }
+  .table-stack td.text-truncate,
+  .table-stack td .text-truncate {
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere;
+  }
+  /* Ações: sem rótulo, alinhadas à esquerda, sem quebrar a grade. */
+  .table-stack td:not([data-label]) {
+    display: block;
+    padding-block: 0.15rem !important;
+  }
+  /* "Ver Imagem" vira um botão só de ícone, alinhado à direita, para não
+     gastar uma linha inteira em cada item. */
+  .table-stack td .view-image-btn {
+    float: right;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.8rem;
+  }
+  /* Linhas de "estado vazio" ocupando a tabela inteira não devem virar card. */
+  .table-stack tbody td[colspan]::before {
+    display: none;
+  }
+}
+
+/* 12. Responsivo ----------------------------------------------------------- */
+@media (max-width: 991.98px) {
+  .app-navbar .navbar-collapse {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--line);
+  }
+  .app-navbar .nav-link {
+    padding: 0.6rem 0.7rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .container,
+  .container-lg,
+  .container-xl {
+    padding-inline: 1rem;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    margin-bottom: 1.25rem;
+  }
+  .page-header .page-actions {
+    width: 100%;
+  }
+  .page-header .page-actions .btn,
+  .page-header .page-actions .btn-group {
+    flex: 1 1 auto;
+  }
+  .page-header .page-actions .btn-group .btn {
+    flex: 1 1 auto;
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+  .card-header {
+    padding: 0.8rem 1rem;
+  }
+
+  .metric-card .metric-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+
+  /* Dropzone mais enxuta em telas pequenas. */
+  #dropZone {
+    padding: 1.75rem 1rem !important;
+  }
+  #dropZone .display-1 {
+    font-size: 2.5rem;
+  }
+
+  .modal-body {
+    padding: 1rem;
+  }
+
+  .table > :not(caption) > * > * {
+    padding: 0.6rem 0.7rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  h1 {
+    font-size: 1.45rem;
+  }
+
+  .app-footer .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .btn-group {
+    flex-wrap: wrap;
+  }
+}
+
+/* 13. Impressão / movimento reduzido --------------------------------------- */
+@media print {
+  .app-navbar,
+  .app-footer,
+  .page-actions,
+  .btn,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #111;
+  }
+  body::before {
+    display: none;
+  }
+  .card,
+  .table {
+    border-color: #ccc;
+    color: #111;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

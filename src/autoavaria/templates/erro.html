@@ -1,0 +1,25 @@
+{% extends "base.html" %} {% block title %}{{ codigo }} - Analisador de Avarias{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="empty-state" style="padding-block: 3.5rem">
+        <span class="empty-icon" style="width: 64px; height: 64px; font-size: 1.9rem">
+          <i class="bi bi-{{ icone }}"></i>
+        </span>
+        <h1 class="display-6 mt-2 mb-1">{{ codigo }}</h1>
+        <p class="empty-title mb-1">{{ titulo }}</p>
+        <p class="mb-4">{{ descricao }}</p>
+        <div class="d-flex gap-2 flex-wrap justify-content-center">
+          <a href="{{ url_for('index') }}" class="btn btn-primary">
+            <i class="bi bi-house"></i> Ir para o Dashboard
+          </a>
+          <a href="{{ url_for('upload_page') }}" class="btn btn-outline-primary">
+            <i class="bi bi-cloud-upload"></i> Enviar imagens
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

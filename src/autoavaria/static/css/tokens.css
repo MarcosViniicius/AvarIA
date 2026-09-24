@@ -1,0 +1,195 @@
+/* ==========================================================================
+   Analisador de Avarias - design system (multi-arquivo)
+   --------------------------------------------------------------------------
+   O antigo style.css monolitico (45 KB) foi dividido nestes modulos.
+   A ordem de carga preserva a cascata original:
+
+   NUCLEO (base.html, em todas as paginas):
+     tokens.css      - variaveis, temas claro/escuro
+     base.css        - reset, tipografia, foco
+     layout.css      - container, page-header, sections
+     navbar.css      - navbar + rodape
+     components.css  - botoes, forms, cards, tabelas, badges, alertas
+     overlays.css    - progresso, modais (+ console), dropdowns, modal-imagem
+     utilities.css   - spin, animacoes, empty-state, utilitarios
+     responsive.css  - table-stack mobile, media queries, impressao
+
+   PAGINA (via {%% block head %%}, so onde usa):
+     pages/dashboard.css - faixa de metricas + estado do sistema
+     pages/upload.css    - dropzone + lista de arquivos
+   ========================================================================== */
+
+/* 1. Tokens ---------------------------------------------------------------- */
+:root {
+  color-scheme: dark;
+
+  /* Superfícies */
+  --bg: #0a0c0c;
+  --surface: #121515;
+  --surface-2: #171b1a;
+  --surface-3: #1e2322;
+  --surface-hover: #262c2b;
+
+  /* Linhas */
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.13);
+
+  /* Texto */
+  --text: #ecf1ef;
+  --text-2: #a7b0ad;
+  --text-3: #8a948f;
+
+  /* Acento único */
+  --accent: #2fbe8a;
+  --accent-hi: #45d6a0;
+  --accent-lo: #1f8f66;
+  --accent-soft: rgba(47, 190, 138, 0.12);
+  --accent-line: rgba(47, 190, 138, 0.32);
+
+  /* Semânticos (dessaturados, legíveis no escuro) */
+  --success: #2fbe8a;
+  --info: #5fa8d3;
+  --warning: #d9a24a;
+  --warning-hi: #e6b463;
+  --danger: #e5484d;
+  --danger-hi: #ef5f63;
+
+  /* Texto sobre superfícies coloridas */
+  --on-accent: #04241a;
+  --on-danger: #ffffff;
+
+  /* Interação (muda com o tema) */
+  --hover: rgba(255, 255, 255, 0.05);
+  --hover-2: rgba(255, 255, 255, 0.08);
+  --row-hover: rgba(255, 255, 255, 0.035);
+  --row-stripe: rgba(255, 255, 255, 0.02);
+  --nav-bg: rgba(12, 15, 15, 0.82);
+  --scroll-thumb: rgba(255, 255, 255, 0.14);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+  --ambient-1: rgba(47, 190, 138, 0.06);
+  --ambient-2: rgba(47, 190, 138, 0.045);
+
+  /* Console de logs é sempre escuro (independente do tema) */
+  --console-bg: #070908;
+
+  /* Imagens embutidas que precisam acompanhar o tema */
+  --select-arrow: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23a7b0ad' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  --close-filter: invert(1) grayscale(100%) brightness(180%);
+  --switch-knob: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23ffffff'/%3e%3c/svg%3e");
+
+  /* Raios — variados de propósito (interno < container) */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  /* Sombras tingidas pelo fundo, direção de luz única (topo) */
+  --shadow-2: 0 14px 34px -18px rgba(0, 0, 0, 0.72);
+  --ring: 0 0 0 3px rgba(47, 190, 138, 0.28);
+
+  /* Card "maquinado": brilho interno no topo + sombra ambiente tingida */
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 32px -24px rgba(0, 0, 0, 0.75);
+  --grain-opacity: 0.05;
+  --inset-hi: rgba(255, 255, 255, 0.07);
+
+  /* Curvas de movimento (nada de linear/ease-in-out) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Tipografia */
+  --font-sans: "Geist", "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Remapeamento das variáveis do Bootstrap */
+  --bs-body-bg: var(--bg);
+  --bs-body-color: var(--text-2);
+  --bs-body-font-family: var(--font-sans);
+  --bs-emphasis-color: var(--text);
+  --bs-secondary-color: var(--text-3);
+  --bs-tertiary-color: var(--text-3);
+  --bs-border-color: var(--line);
+  --bs-border-color-translucent: var(--line);
+  --bs-link-color: var(--accent);
+  --bs-link-color-rgb: 47, 190, 138;
+  --bs-link-hover-color: var(--accent-hi);
+  --bs-link-hover-color-rgb: 69, 214, 160;
+  --bs-primary: var(--accent);
+  --bs-primary-rgb: 47, 190, 138;
+  --bs-success-rgb: 47, 190, 138;
+  --bs-info-rgb: 95, 168, 211;
+  --bs-warning-rgb: 217, 162, 74;
+  --bs-danger-rgb: 229, 72, 77;
+  --bs-border-radius: var(--r);
+  --bs-border-radius-sm: var(--r-sm);
+  --bs-border-radius-lg: var(--r-lg);
+  --bs-body-font-size: 0.9375rem; /* 15px */
+  --bs-body-line-height: 1.6;
+}
+
+/* Tema claro (opt-in via data-theme="light" no <html>). O escuro continua
+   sendo o padrão do sistema. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f7f5;
+  --surface: #fcfdfc;
+  --surface-2: #f0f4f2;
+  --surface-3: #e7ecea;
+  --surface-hover: #dfe5e2;
+
+  --line: rgba(16, 32, 26, 0.1);
+  --line-2: rgba(16, 32, 26, 0.18);
+
+  --text: #10201a;
+  --text-2: #47554f;
+  --text-3: #5f6b66;
+
+  --accent: #0f7d57;
+  --accent-hi: #0b6b4a;
+  --accent-lo: #095a3e;
+  --accent-soft: rgba(15, 125, 87, 0.1);
+  --accent-line: rgba(15, 125, 87, 0.32);
+
+  --success: #0f7d57;
+  --info: #2f7fb0;
+  --warning: #a9711c;
+  --warning-hi: #925f14;
+  --danger: #cf3b40;
+  --danger-hi: #b83338;
+
+  --on-accent: #ffffff;
+  --on-danger: #ffffff;
+
+  --hover: rgba(16, 32, 26, 0.05);
+  --hover-2: rgba(16, 32, 26, 0.08);
+  --row-hover: rgba(16, 32, 26, 0.04);
+  --row-stripe: rgba(16, 32, 26, 0.025);
+  --nav-bg: rgba(255, 255, 255, 0.85);
+  --scroll-thumb: rgba(16, 32, 26, 0.2);
+  --scroll-thumb-hover: rgba(16, 32, 26, 0.34);
+  --ambient-1: rgba(18, 153, 107, 0.07);
+  --ambient-2: rgba(18, 153, 107, 0.05);
+
+  --shadow-2: 0 14px 34px -18px rgba(16, 32, 26, 0.28);
+  --ring: 0 0 0 3px rgba(18, 153, 107, 0.22);
+
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(16, 32, 26, 0.06), 0 18px 36px -26px rgba(16, 32, 26, 0.3);
+  --grain-opacity: 0.07;
+  --inset-hi: rgba(255, 255, 255, 0.95);
+
+  --select-arrow: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2347554f' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  --close-filter: none;
+  --switch-knob: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280, 0, 0, 0.25%29'/%3e%3c/svg%3e");
+
+  --bs-link-color-rgb: 15, 125, 87;
+  --bs-link-hover-color-rgb: 11, 107, 74;
+  --bs-primary-rgb: 15, 125, 87;
+  --bs-success-rgb: 15, 125, 87;
+  --bs-info-rgb: 47, 127, 176;
+  --bs-warning-rgb: 169, 113, 28;
+  --bs-danger-rgb: 207, 59, 64;
+}

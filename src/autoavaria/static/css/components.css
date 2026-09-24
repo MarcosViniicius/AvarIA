@@ -1,0 +1,688 @@
+/* components.css - Componentes: botoes, formularios, cards, tabelas, badges, alertas, toasts.
+   Eram as secoes 5-8 do style.css. */
+/* 5. Botões ---------------------------------------------------------------- */
+.btn {
+  --bs-btn-font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.05rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  line-height: 1.2;
+  transition: background 0.18s var(--ease-out), border-color 0.18s var(--ease-out), color 0.18s var(--ease-out),
+    transform 0.08s var(--ease-out);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+.btn i {
+  font-size: 1.02em;
+  transition: transform 0.25s var(--ease-out);
+}
+.btn:hover .bi {
+  transform: scale(1.08);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  border-radius: var(--r-xs);
+}
+
+.btn-lg {
+  padding: 0.7rem 1.4rem;
+  font-size: 0.98rem;
+}
+
+.btn-primary,
+.btn-success {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-success:hover,
+.btn-success:focus {
+  background: var(--accent-hi);
+  border-color: var(--accent-hi);
+  color: var(--on-accent);
+}
+
+.btn-primary:active,
+.btn-success:active {
+  background: var(--accent-lo);
+  border-color: var(--accent-lo);
+  color: var(--on-accent);
+}
+
+/* Ação de atenção: tonal (não é um segundo acento cheio competindo com o verde) */
+.btn-warning {
+  background: rgba(217, 162, 74, 0.15);
+  border-color: rgba(217, 162, 74, 0.38);
+  color: var(--warning-hi);
+}
+.btn-warning:hover,
+.btn-warning:focus {
+  background: rgba(217, 162, 74, 0.24);
+  border-color: rgba(217, 162, 74, 0.55);
+  color: var(--warning-hi);
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
+}
+.btn-danger:hover,
+.btn-danger:focus {
+  background: var(--danger-hi);
+  border-color: var(--danger-hi);
+  color: var(--on-danger);
+}
+
+.btn-secondary {
+  background: var(--surface-3);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+.btn-secondary:hover,
+.btn-secondary:focus {
+  background: var(--surface-hover);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+/* Outline: um único tratamento, sem 6 cores competindo. */
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-success,
+.btn-outline-info,
+.btn-outline-warning,
+.btn-outline-danger {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text-2);
+}
+.btn-outline-primary:hover,
+.btn-outline-secondary:hover,
+.btn-outline-success:hover,
+.btn-outline-info:hover,
+.btn-outline-warning:hover,
+.btn-outline-danger:hover,
+.btn-outline-primary:focus,
+.btn-outline-secondary:focus,
+.btn-outline-success:focus,
+.btn-outline-info:focus,
+.btn-outline-warning:focus,
+.btn-outline-danger:focus {
+  background: var(--hover-2);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+.btn-outline-primary {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.btn-outline-primary:hover,
+.btn-outline-primary:focus {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hi);
+}
+
+.btn-outline-danger {
+  border-color: rgba(229, 72, 77, 0.4);
+  color: var(--danger);
+}
+.btn-outline-danger:hover,
+.btn-outline-danger:focus {
+  background: rgba(229, 72, 77, 0.12);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-outline-warning {
+  border-color: rgba(217, 162, 74, 0.4);
+  color: var(--warning);
+}
+.btn-outline-warning:hover,
+.btn-outline-warning:focus {
+  background: rgba(217, 162, 74, 0.12);
+  border-color: var(--warning);
+  color: var(--warning-hi);
+}
+
+.btn-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.btn-link:hover {
+  color: var(--accent-hi);
+}
+
+.btn:disabled,
+.btn.disabled {
+  opacity: 0.45;
+  transform: none;
+}
+
+.btn-group .btn {
+  border-radius: 0;
+}
+.btn-group > .btn:first-child {
+  border-top-left-radius: var(--r-sm);
+  border-bottom-left-radius: var(--r-sm);
+}
+.btn-group > .btn:last-child {
+  border-top-right-radius: var(--r-sm);
+  border-bottom-right-radius: var(--r-sm);
+}
+.btn-group .dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.7rem;
+}
+.dropdown-toggle::after {
+  margin-left: 0.3em;
+  vertical-align: 0.15em;
+  border-top: 0.28em solid;
+  border-right: 0.28em solid transparent;
+  border-left: 0.28em solid transparent;
+}
+
+/* 6. Formulários ----------------------------------------------------------- */
+.form-label {
+  margin-bottom: 0.35rem;
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.88rem;
+}
+
+.form-control,
+.form-select {
+  padding: 0.55rem 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 0.9rem;
+  transition: border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+
+.form-control::placeholder {
+  color: var(--text-3);
+}
+
+.form-control:focus,
+.form-select:focus {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  color: var(--text);
+  outline: none;
+}
+
+.form-select {
+  --bs-form-select-bg-img: var(--select-arrow);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  background: var(--surface);
+  color: var(--text-3);
+}
+
+.form-text {
+  color: var(--text-3);
+  font-size: 0.82rem;
+}
+
+.input-group-text {
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  border-right: none;
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+  color: var(--text-3);
+}
+
+.form-check-input {
+  background-color: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+.form-check-input:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+.form-check-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.form-check-label {
+  color: var(--text-2);
+  font-size: 0.9rem;
+}
+
+.form-switch .form-check-input {
+  width: 2.4em;
+  background-color: var(--surface-3);
+  border-color: var(--line-2);
+  --bs-form-switch-bg: var(--switch-knob);
+}
+
+/* 7. Cards / listas / tabelas ---------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+  color: var(--text-2);
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+.card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.9rem 1.25rem;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r-lg) var(--r-lg) 0 0 !important;
+}
+
+.card-footer {
+  padding: 0.85rem 1.25rem;
+  background: transparent;
+  border-top: 1px solid var(--line);
+}
+
+.card-title {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Neutraliza utilitários legados que competiam com o tema (border-0,
+   shadow-sm) sem precisar editar cada template. */
+.card.border-0 {
+  border: 1px solid var(--line) !important;
+}
+.card.shadow-sm,
+.card.shadow,
+.card.shadow-lg {
+  box-shadow: var(--card-shadow) !important;
+}
+.card.bg-transparent {
+  background: var(--surface) !important;
+}
+
+/* Card de métrica: número grande, rótulo discreto, ícone à direita. */
+.metric-card .metric-label {
+  color: var(--text-3);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+
+.metric-card .metric-value {
+  margin: 0;
+  font-size: clamp(1.6rem, 1.3rem + 1vw, 2.1rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.metric-card .metric-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r);
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border: 1px solid var(--line-2);
+  box-shadow: inset 0 1px 0 var(--inset-hi), 0 1px 2px rgba(0, 0, 0, 0.3);
+  font-size: 1.15rem;
+}
+
+.list-group-item {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text-2);
+}
+.list-group-item:hover {
+  background: var(--surface-2);
+}
+.list-group-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-hi);
+}
+
+/* Tabelas: via variáveis do Bootstrap 5.3 (sem !important empilhado). */
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--text-2);
+  --bs-table-border-color: var(--line);
+  --bs-table-hover-bg: var(--row-hover);
+  --bs-table-hover-color: var(--text);
+  --bs-table-striped-bg: var(--row-stripe);
+  margin-bottom: 0;
+  color: var(--text-2);
+}
+
+.table > :not(caption) > * > * {
+  padding: 0.7rem 0.85rem;
+  background: transparent;
+  border-bottom-width: 1px;
+  box-shadow: none;
+}
+
+.table thead th,
+.table-light {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--text-3);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line-2);
+  white-space: nowrap;
+}
+
+.table tbody td {
+  vertical-align: middle;
+}
+
+.table-hover > tbody > tr:hover > * {
+  --bs-table-bg-state: var(--row-hover);
+}
+
+.table-sm > :not(caption) > * > * {
+  padding: 0.45rem 0.6rem;
+}
+
+/* thead com .table-dark (usado em editar_dados) segue o mesmo cabeçalho. */
+/* thead com .table-dark (usado em editar_dados) segue o mesmo cabeçalho. */
+.table-dark,
+.table thead.table-dark {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--text-3);
+  background: transparent;
+}
+
+/* Tabelas ordenáveis + edição inline (antes eram 3 blocos <style> repetidos
+   em relatorio.html, historico_execucao.html e editar_dados.html — as regras
+   .sortable/.editable-field chegavam a existir em duplicata). Núcleo: as três
+   páginas usam; cache de 1 ano em vez de rebaixar a cada resposta. */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.sortable:hover {
+  color: var(--text);
+  background-color: var(--row-hover);
+}
+.sort-icon {
+  font-size: 0.8rem;
+}
+.table th {
+  border-top: none;
+  font-weight: 600;
+}
+.text-truncate {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Edição inline (editar_dados + historico_execucao). */
+.editable-field {
+  border-bottom: 1px dashed var(--line-2);
+  padding: 2px 4px;
+  border-radius: var(--r-xs);
+  transition: background-color 0.2s;
+}
+.editable-field:hover {
+  background-color: var(--hover-2);
+}
+.table td {
+  vertical-align: middle;
+}
+.btn-group-sm .btn {
+  padding: 0.25rem 0.5rem;
+}
+.dropdown-menu .dropdown-item {
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+}
+.dropdown-menu .dropdown-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.btn-group .dropdown-toggle::after {
+  font-size: 0.7rem;
+}
+.removing-row {
+  background-color: rgba(229, 72, 77, 0.14) !important;
+  transition: all 0.3s ease;
+}
+
+.table-responsive {
+  border-radius: var(--r);
+}
+
+/* Sombra lateral indicando que a tabela rola na horizontal (mobile). */
+.table-responsive.has-scroll {
+  background-image: linear-gradient(
+      to right,
+      var(--surface) 30%,
+      rgba(18, 21, 21, 0)
+    ),
+    linear-gradient(to right, rgba(18, 21, 21, 0), var(--surface) 70%);
+  background-position: 0 0, 100% 0;
+  background-repeat: no-repeat;
+  background-size: 28px 100%, 28px 100%;
+  background-attachment: local, local;
+}
+
+/* Tabs (abas em pílula/underline, com rolagem horizontal no mobile). */
+.nav-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+.nav-tabs .nav-link {
+  margin-bottom: -1px;
+  padding: 0.6rem 0.9rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  transition: color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+.nav-tabs .nav-link:hover {
+  color: var(--text);
+  border-bottom-color: var(--line-2);
+}
+.nav-tabs .nav-link.active {
+  background: transparent;
+  color: var(--accent-hi);
+  border-bottom-color: var(--accent);
+}
+.card-header-tabs {
+  margin: 0;
+}
+.card-header:has(.nav-tabs) {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* Cliva as bordas da tabela/listas que ficam coladas ao rodapé do card. */
+.card > .card-body:last-child {
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
+}
+.card > .card-body.p-0:last-child {
+  overflow: hidden;
+}
+
+/* 8. Badges / alertas / toasts --------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.32em 0.6em;
+  border-radius: var(--r-xs);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.badge.bg-success {
+  background: var(--accent-soft) !important;
+  color: var(--accent-hi) !important;
+}
+.badge.bg-primary {
+  background: var(--accent-soft) !important;
+  color: var(--accent-hi) !important;
+}
+.badge.bg-info {
+  background: rgba(95, 168, 211, 0.14) !important;
+  color: var(--info) !important;
+}
+.badge.bg-warning {
+  background: rgba(217, 162, 74, 0.16) !important;
+  color: var(--warning) !important;
+}
+.badge.bg-danger {
+  background: rgba(229, 72, 77, 0.15) !important;
+  color: var(--danger) !important;
+}
+.badge.bg-secondary {
+  background: var(--hover-2) !important;
+  color: var(--text-2) !important;
+}
+
+/* Variantes "subtle" usadas no histórico. */
+.bg-success-subtle {
+  background: var(--accent-soft) !important;
+}
+.text-success-emphasis {
+  color: var(--accent-hi) !important;
+}
+.bg-primary-subtle {
+  background: var(--accent-soft) !important;
+}
+.text-primary-emphasis {
+  color: var(--accent-hi) !important;
+}
+.bg-secondary-subtle {
+  background: var(--hover-2) !important;
+}
+.text-secondary-emphasis {
+  color: var(--text-2) !important;
+}
+
+.alert {
+  padding: 0.9rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--text-3);
+  border-radius: var(--r);
+  color: var(--text-2);
+}
+
+.alert .alert-heading {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.alert-success {
+  border-left-color: var(--accent);
+}
+.alert-info {
+  border-left-color: var(--info);
+}
+.alert-warning {
+  border-left-color: var(--warning);
+}
+.alert-danger {
+  border-left-color: var(--danger);
+}
+
+.alert-success .bi,
+.alert-info .bi,
+.alert-warning .bi,
+.alert-danger .bi {
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.btn-close {
+  filter: var(--close-filter);
+  opacity: 0.6;
+}
+.btn-close:hover {
+  opacity: 1;
+}
+
+/* Toasts flutuantes criados por main.js (posicionamento inline). */
+.alert-floating {
+  min-width: 280px;
+  max-width: min(420px, calc(100vw - 2rem));
+  box-shadow: var(--shadow-2);
+  border-left-width: 3px;
+  backdrop-filter: blur(10px);
+  animation: toastIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.alert-floating.animate__fadeOutRight {
+  animation: toastOut 0.25s var(--ease-out) both;
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toastOut {
+  to {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}

@@ -1,0 +1,90 @@
+/* pages/dashboard.css - Dashboard: faixa de metricas + estado do sistema.
+   Era um bloco dentro da secao 2. Carregado SO no dashboard via block head. */
+/* Faixa de métricas do dashboard: uma linha só, em vez de 4 cards altos.
+   Cada item é ícone + rótulo pequeno + número, separados por hairline. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.stat-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  min-width: 0;
+}
+.stat-strip-item + .stat-strip-item {
+  border-left: 1px solid var(--line);
+}
+.stat-strip-item > .bi {
+  font-size: 1.25rem;
+  flex: 0 0 auto;
+}
+.stat-strip-label {
+  margin-bottom: 0.1rem;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.stat-strip-value {
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lista de estado (rótulo à esquerda, valor à direita) sem <hr> entre linhas. */
+.stat-list {
+  margin: 0;
+}
+.stat-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+}
+.stat-list-row + .stat-list-row {
+  border-top: 1px solid var(--line);
+}
+.stat-list-row dt {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+.stat-list-row dt .bi {
+  margin-right: 0.4rem;
+}
+.stat-list-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767.98px) {
+  /* Em telas estreitas a faixa vira 2×2 para os rótulos não quebrarem. */
+  .stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat-strip-item {
+    padding: 0.7rem 0.85rem;
+  }
+  .stat-strip-item:nth-child(odd) {
+    border-left: none;
+  }
+  .stat-strip-item:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+  .stat-strip-value {
+    font-size: 1.2rem;
+  }
+}

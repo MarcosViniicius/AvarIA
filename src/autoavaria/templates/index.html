@@ -1,197 +1,139 @@
 {% extends "base.html" %} {% block title %}Dashboard - Analisador de Avarias{%
-endblock %} {% block content %}
+endblock %} {% block head %}
+<link href="{{ static_v('css/pages/dashboard.css') }}" rel="stylesheet" />
+{% endblock %} {% block content %}
 <div class="row">
   <!-- Cabeçalho -->
-  <div class="col-12 mb-4">
-    <div class="d-flex justify-content-between align-items-center">
+  <div class="col-12">
+    <div class="page-header">
       <div>
-        <h1 class="h2 mb-1">
-          <i class="bi bi-speedometer2 text-primary me-2"></i>Dashboard
+        <h1>
+          <i class="bi bi-speedometer2 text-primary"></i>Dashboard
         </h1>
-        <p class="text-muted">Visão geral do sistema de análise de avarias</p>
+        <p class="page-subtitle">Visão geral do sistema de análise de avarias</p>
       </div>
-      <div class="d-flex align-items-center">
+      <div class="page-actions">
         <select
           id="modoExtracaoSelect"
-          class="form-select form-select-sm me-2"
-          style="width: auto"
+          class="form-select form-select-sm w-auto"
           title="Modo de extração dos dados das imagens"
         >
-          <option value="ia">🤖 Somente IA</option>
-          <option value="hibrido">⚡ Híbrido (código de barras + IA)</option>
-          <option value="sem_ia">📷 Sem IA (só código de barras)</option>
+          <option value="ia">Somente IA</option>
+          <option value="hibrido">Híbrido (código de barras + IA)</option>
+          <option value="sem_ia">Sem IA (só código de barras)</option>
         </select>
-        <button id="refreshBtn" class="btn btn-outline-primary me-2">
+        <button id="refreshBtn" class="btn btn-outline-primary">
           <i class="bi bi-arrow-clockwise"></i> Atualizar
         </button>
-        <button id="processBtn" class="btn btn-success">
-          <i class="bi bi-play-fill"></i> Iniciar Processamento
+        <button id="processBtn" class="btn btn-primary">
+          <i class="bi bi-play-fill"></i> Iniciar processamento
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Cards de Estatísticas -->
-  <div class="col-xl-3 col-md-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
-    >
-      <div class="card-body">
-        <div class="row align-items-center">
-          <div class="col">
-            <h5 class="card-title text-muted mb-2 font-weight-bold">
-              Total de Imagens
-            </h5>
-            <h2 class="text-primary mb-0" id="totalImagens">
-              {{ stats.imagens_total }}
-            </h2>
-          </div>
-          <div class="col-auto">
-            <i class="bi bi-images text-primary" style="font-size: 2rem"></i>
-          </div>
+  <!-- Faixa de métricas: uma linha só, em vez de 4 cards altos -->
+  <div class="col-12 mb-4">
+    <div class="card stat-strip">
+      <div class="stat-strip-item">
+        <i class="bi bi-images text-primary"></i>
+        <div>
+          <div class="stat-strip-label">Total de imagens</div>
+          <div class="stat-strip-value" id="totalImagens">{{ stats.imagens_total }}</div>
+        </div>
+      </div>
+      <div class="stat-strip-item">
+        <i class="bi bi-check-circle text-success"></i>
+        <div>
+          <div class="stat-strip-label">Processadas</div>
+          <div class="stat-strip-value text-success" id="imagensProcessadas">{{ stats.imagens_processadas }}</div>
+        </div>
+      </div>
+      <div class="stat-strip-item">
+        <i class="bi bi-clock text-warning"></i>
+        <div>
+          <div class="stat-strip-label">Pendentes</div>
+          <div class="stat-strip-value text-warning" id="imagensPendentes">{{ stats.imagens_pendentes }}</div>
+        </div>
+      </div>
+      <div class="stat-strip-item">
+        <i class="bi bi-cpu text-info"></i>
+        <div>
+          <div class="stat-strip-label">Tokens hoje</div>
+          <div class="stat-strip-value text-info" id="tokensHoje">{{ "{:,}".format(stats.tokens_consumidos_hoje) }}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="col-xl-3 col-md-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
-      style="animation-delay: 0.1s"
-    >
-      <div class="card-body">
-        <div class="row align-items-center">
-          <div class="col">
-            <h5 class="card-title text-muted mb-2 font-weight-bold">
-              Processadas
-            </h5>
-            <h2 class="text-success mb-0" id="imagensProcessadas">
-              {{ stats.imagens_processadas }}
-            </h2>
-          </div>
-          <div class="col-auto">
-            <i
-              class="bi bi-check-circle text-success"
-              style="font-size: 2rem"
-            ></i>
-          </div>
+  <!-- Barra de progresso do lote atual -->
+  <div class="col-12 mb-4">
+    <div class="card">
+      <div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-baseline mb-2 flex-wrap gap-1">
+          <span class="fw-semibold">
+            <i class="bi bi-list-check text-primary me-1"></i>Progresso do lote
+          </span>
+          <span class="text-muted small" id="progressoResumo">
+            {{ stats.imagens_processadas }} de {{ stats.imagens_total }} imagens analisadas
+          </span>
+        </div>
+        {% set pct = (stats.imagens_processadas / stats.imagens_total * 100) if stats.imagens_total > 0 else 0 %}
+        <div class="progress" style="height: 10px">
+          <div
+            id="progressoBarra"
+            class="progress-bar"
+            role="progressbar"
+            style="width: {{ '%.1f' | format(pct) }}%"
+            aria-valuenow="{{ '%.0f' | format(pct) }}"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          ></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="col-xl-3 col-md-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
-      style="animation-delay: 0.2s"
-    >
-      <div class="card-body">
-        <div class="row align-items-center">
-          <div class="col">
-            <h5 class="card-title text-muted mb-2 font-weight-bold">
-              Pendentes
-            </h5>
-            <h2 class="text-warning mb-0" id="imagensPendentes">
-              {{ stats.imagens_pendentes }}
-            </h2>
-          </div>
-          <div class="col-auto">
-            <i class="bi bi-clock text-warning" style="font-size: 2rem"></i>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-3 col-md-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInUp"
-      style="animation-delay: 0.3s"
-    >
-      <div class="card-body">
-        <div class="row align-items-center">
-          <div class="col">
-            <h5 class="card-title text-muted mb-2 font-weight-bold">
-              Tokens Hoje
-            </h5>
-            <h2 class="text-info mb-0" id="tokensHoje">
-              {{ "{:,}".format(stats.tokens_consumidos_hoje) }}
-            </h2>
-          </div>
-          <div class="col-auto">
-            <i class="bi bi-cpu text-info" style="font-size: 2rem"></i>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Informações do Sistema -->
-  <div class="col-lg-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInLeft"
-    >
-      <div class="card-header bg-transparent">
-        <h5 class="card-title mb-0">
-          <i class="bi bi-info-circle text-primary me-2"></i>Informações do
-          Sistema
-        </h5>
+  <!-- Estado do sistema + Ações -->
+  <div class="col-lg-7 mb-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-title">
+          <i class="bi bi-activity text-primary me-1"></i>Estado do sistema
+        </span>
       </div>
       <div class="card-body">
-        <div class="row g-3">
-          <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-              <span class="text-muted">
-                <i class="bi bi-calendar3 me-2"></i>Último Processamento:
-              </span>
-              <span class="fw-bold" id="ultimoProcessamento"
-                >{{ stats.ultimo_processamento }}</span
-              >
-            </div>
-            <hr />
+        <dl class="stat-list">
+          <div class="stat-list-row">
+            <dt><i class="bi bi-calendar3"></i> Último processamento</dt>
+            <dd id="ultimoProcessamento">{{ stats.ultimo_processamento }}</dd>
           </div>
-          <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-              <span class="text-muted">
-                <i class="bi bi-file-earmark-excel me-2"></i>Relatório
-                Disponível:
+          <div class="stat-list-row">
+            <dt><i class="bi bi-file-earmark-spreadsheet"></i> Relatório</dt>
+            <dd>
+              {% if stats.relatorio_existe %}
+              <span class="badge bg-success-subtle text-success-emphasis">
+                <i class="bi bi-check-circle"></i> Disponível
               </span>
-              <span
-                class="{% if stats.relatorio_existe %}text-success{% else %}text-warning{% endif %}"
-              >
-                {% if stats.relatorio_existe %}
-                <i class="bi bi-check-circle"></i> Sim {% else %}
-                <i class="bi bi-x-circle"></i> Não {% endif %}
+              {% else %}
+              <span class="badge bg-warning-subtle text-warning-emphasis">
+                <i class="bi bi-x-circle"></i> Não gerado
               </span>
-            </div>
-            <hr />
+              {% endif %}
+            </dd>
           </div>
-          <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-              <span class="text-muted">
-                <i class="bi bi-percent me-2"></i>Progresso:
-              </span>
-              <span class="fw-bold">
-                {% if stats.imagens_total > 0 %} {{ "%.1f" |
-                format((stats.imagens_processadas / stats.imagens_total) * 100)
-                }}% {% else %} 0% {% endif %}
-              </span>
-            </div>
+          <div class="stat-list-row">
+            <dt><i class="bi bi-cpu"></i> Modo de extração</dt>
+            <dd id="modoAtualRotulo">—</dd>
           </div>
-        </div>
+        </dl>
 
         {% if stats.relatorio_existe %}
-        <div class="mt-3">
-          <a
-            href="{{ url_for('download_relatorio') }}"
-            class="btn btn-outline-success btn-sm me-2"
-          >
-            <i class="bi bi-download"></i> Download Relatório
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a href="{{ url_for('download_relatorio') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-download"></i> Baixar relatório
           </a>
-          <a
-            href="{{ url_for('visualizar_relatorio') }}"
-            class="btn btn-outline-primary btn-sm"
-          >
+          <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-eye"></i> Visualizar
           </a>
         </div>
@@ -201,40 +143,23 @@ endblock %} {% block content %}
   </div>
 
   <!-- Ações Rápidas -->
-  <div class="col-lg-6 mb-4">
-    <div
-      class="card border-0 shadow-sm h-100 animate__animated animate__fadeInRight"
-    >
-      <div class="card-header bg-transparent">
-        <h5 class="card-title mb-0">
-          <i class="bi bi-lightning text-warning me-2"></i>Ações Rápidas
-        </h5>
+  <div class="col-lg-5 mb-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-title">
+          <i class="bi bi-lightning-charge text-warning me-1"></i>Ações rápidas
+        </span>
       </div>
       <div class="card-body">
         <div class="d-grid gap-2">
-          <a
-            href="{{ url_for('upload_page') }}"
-            class="btn btn-outline-primary"
-          >
-            <i class="bi bi-cloud-upload me-2"></i>Enviar Novas Imagens
+          <a href="{{ url_for('upload_page') }}" class="btn btn-outline-primary">
+            <i class="bi bi-cloud-upload"></i> Enviar novas imagens
           </a>
-
-          {% if stats.imagens_pendentes > 0 %}
-          <button id="processBtn2" class="btn btn-success">
-            <i class="bi bi-play-fill me-2"></i>Processar {{
-            stats.imagens_pendentes }} Imagem(s)
-          </button>
-          {% else %}
-          <button class="btn btn-secondary" disabled>
-            <i class="bi bi-check-circle me-2"></i>Todas as Imagens Processadas
-          </button>
-          {% endif %}
-
-          <a
-            href="{{ url_for('configuracoes') }}"
-            class="btn btn-outline-secondary"
-          >
-            <i class="bi bi-gear me-2"></i>Configurações
+          <a href="{{ url_for('historico') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-clock-history"></i> Ver histórico
+          </a>
+          <a href="{{ url_for('configuracoes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-sliders"></i> Configurações
           </a>
         </div>
       </div>
@@ -244,11 +169,14 @@ endblock %} {% block content %}
   <!-- Resultados Recentes -->
   {% if resultados.avarias or resultados.uso_interno %}
   <div class="col-12">
-    <div class="card border-0 shadow-sm animate__animated animate__fadeInUp">
-      <div class="card-header bg-transparent">
-        <h5 class="card-title mb-0">
-          <i class="bi bi-list-ul text-primary me-2"></i>Resultados Recentes
-        </h5>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">
+          <i class="bi bi-list-ul text-primary me-1"></i>Resultados recentes
+        </span>
+        <a href="{{ url_for('visualizar_relatorio') }}" class="btn btn-link btn-sm">
+          Ver relatório completo <i class="bi bi-arrow-right"></i>
+        </a>
       </div>
       <div class="card-body">
         <!-- Nav tabs -->
@@ -277,7 +205,7 @@ endblock %} {% block content %}
               type="button"
               role="tab"
             >
-              <i class="bi bi-building text-info me-1"></i>
+              <i class="bi bi-box-seam text-info me-1"></i>
               Uso Interno ({{ resultados.uso_interno|length }})
             </button>
           </li>
@@ -303,7 +231,7 @@ endblock %} {% block content %}
           {% if resultados.avarias %}
           <div class="tab-pane fade show active" id="avarias" role="tabpanel">
             <div class="table-responsive mt-3">
-              <table class="table table-hover">
+              <table class="table table-hover table-sm table-stack">
                 <thead class="table-light">
                   <tr>
                     <th>Produto</th>
@@ -348,7 +276,7 @@ endblock %} {% block content %}
             role="tabpanel"
           >
             <div class="table-responsive mt-3">
-              <table class="table table-hover">
+              <table class="table table-hover table-sm table-stack">
                 <thead class="table-light">
                   <tr>
                     <th>Produto</th>
@@ -391,7 +319,7 @@ endblock %} {% block content %}
           {% endif %} {% if resultados.erros %}
           <div class="tab-pane fade" id="erros" role="tabpanel">
             <div class="table-responsive mt-3">
-              <table class="table table-hover">
+              <table class="table table-hover table-sm table-stack">
                 <thead class="table-light">
                   <tr>
                     <th>Arquivo</th>
@@ -430,235 +358,28 @@ endblock %} {% block content %}
       </div>
     </div>
   </div>
-  {% endif %}
-</div>
-{% endblock %} {% block scripts %}
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    // Bind botões de processamento
-    const processBtn = document.getElementById("processBtn");
-    const processBtn2 = document.getElementById("processBtn2");
-    const refreshBtn = document.getElementById("refreshBtn");
-
-    if (processBtn) {
-      processBtn.addEventListener("click", iniciarProcessamento);
-    }
-    if (processBtn2) {
-      processBtn2.addEventListener("click", iniciarProcessamento);
-    }
-    if (refreshBtn) {
-      // não passar atualizarStats direto: addEventListener chamaria com o
-      // Event do clique como 1º argumento, que o parametro `silencioso`
-      // interpretaria como truthy e silenciaria o clique manual também.
-      refreshBtn.addEventListener("click", () => atualizarStats(false));
-    }
-
-    // Pré-selecionar o modo salvo em Configurações, para o seletor refletir
-    // o padrão do usuário em vez de sempre voltar para "Somente IA".
-    const modoSelect = document.getElementById("modoExtracaoSelect");
-    if (modoSelect) {
-      fetch("/api/configuracoes")
-        .then((r) => r.json())
-        .then((config) => {
-          const modoSalvo = config.processamento?.modo_extracao;
-          if (modoSalvo) modoSelect.value = modoSalvo;
-        })
-        .catch(() => {}); // mantém o padrão do <select> se a leitura falhar
-    }
-
-    function iniciarProcessamento() {
-      const modo_extracao = modoSelect ? modoSelect.value : undefined;
-      fetch("/processar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ modo_extracao }),
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.success) {
-            showAlert("success", data.message);
-            monitorarProgresso();
-          } else {
-            showAlert("danger", data.message);
-          }
-        })
-        .catch((error) => {
-          showAlert("danger", "Erro ao iniciar processamento: " + error);
-        });
-    }
-
-    // silencioso=true (usado pelo auto-refresh de 30s) não mostra o toast de
-    // sucesso nem o spinner do botão - só o clique manual precisa desse
-    // feedback. Sem essa distinção, o usuário recebia um alerta verde a cada
-    // 30s sem ter pedido nada, o que treina a ignorar alertas (inclusive os
-    // de erro de verdade).
-    function atualizarStats(silencioso) {
-      const originalText = refreshBtn.innerHTML;
-      if (!silencioso) {
-        refreshBtn.innerHTML =
-          '<i class="bi bi-arrow-clockwise spin"></i> Atualizando...';
-        refreshBtn.disabled = true;
-      }
-
-      fetch("/api/stats")
-        .then((response) => response.json())
-        .then((stats) => {
-          document.getElementById("totalImagens").textContent =
-            stats.imagens_total;
-          document.getElementById("imagensProcessadas").textContent =
-            stats.imagens_processadas;
-          document.getElementById("imagensPendentes").textContent =
-            stats.imagens_pendentes;
-          document.getElementById("tokensHoje").textContent =
-            stats.tokens_consumidos_hoje.toLocaleString();
-          document.getElementById("ultimoProcessamento").textContent =
-            stats.ultimo_processamento;
-
-          if (!silencioso) {
-            showAlert("success", "Estatísticas atualizadas!");
-          }
-        })
-        .catch((error) => {
-          if (!silencioso) {
-            showAlert("danger", "Erro ao atualizar: " + error);
-          }
-        })
-        .finally(() => {
-          if (!silencioso) {
-            refreshBtn.innerHTML = originalText;
-            refreshBtn.disabled = false;
-          }
-        });
-    }
-
-    // Auto-refresh silencioso a cada 30 segundos
-    setInterval(() => atualizarStats(true), 30000);
-
-    // Configurar visualização de imagens usando delegação de eventos
-    console.log("🖼️ Configurando visualização de imagens com delegação...");
-    
-    // Usar delegação de eventos no document para capturar cliques em botões dinâmicos
-    document.addEventListener("click", function(e) {
-      if (e.target.closest(".view-image-btn")) {
-        e.preventDefault();
-        const btn = e.target.closest(".view-image-btn");
-        console.log("�️ Botão clicado via delegação!");
-        
-        const imagePath = btn.getAttribute("data-image");
-        console.log("🖼️ Caminho da imagem:", imagePath);
-
-        if (!imagePath || imagePath === "N/A" || imagePath === "-") {
-          alert("Imagem não disponível");
-          return;
-        }
-
-        // Verificar se modal existe
-        const imageModalEl = document.getElementById("imageModal");
-        if (!imageModalEl) {
-          alert("Modal de imagem não encontrado");
-          return;
-        }
-
-        const imageModal = new bootstrap.Modal(imageModalEl);
-        const modalImage = document.getElementById("modalImage");
-        const downloadBtn = document.getElementById("downloadImageBtn");
-        const imageLoadError = document.getElementById("imageLoadError");
-
-        // Extrair nome do arquivo da URL
-        const filename = imagePath.split("/").pop() || "Imagem";
-
-        // Atualizar modal
-        const titleEl = document.getElementById("imageModalLabel");
-        const filenameEl = document.getElementById("imageModalFilename");
-        
-        if (titleEl) titleEl.textContent = "Visualizar Imagem";
-        if (filenameEl) filenameEl.textContent = filename;
-
-        // Configurar imagem
-        if (modalImage) {
-          modalImage.src = imagePath;
-          modalImage.alt = filename;
-          modalImage.onload = () => {
-            if (imageLoadError) imageLoadError.style.display = "none";
-          };
-          modalImage.onerror = () => {
-            if (imageLoadError) {
-              imageLoadError.style.display = "block";
-              imageLoadError.textContent = "Erro ao carregar a imagem";
-            }
-          };
-        }
-
-        // Configurar botão de download
-        if (downloadBtn) {
-          downloadBtn.onclick = () => {
-            const link = document.createElement('a');
-            link.href = imagePath;
-            link.download = filename;
-            link.click();
-          };
-        }
-
-        console.log("📱 Abrindo modal...");
-        imageModal.show();
-      }
-    });
-  });
-</script>
-</script>
-
-<!-- Modal de Visualização de Imagem -->
-<div
-  class="modal fade"
-  id="imageModal"
-  tabindex="-1"
-  aria-labelledby="imageModalLabel"
-  aria-hidden="true"
->
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="imageModalLabel">Visualizar Imagem</h5>
-        <small class="text-muted ms-2" id="imageModalFilename"></small>
-        <button
-          type="button"
-          class="btn-close"
-          data-bs-dismiss="modal"
-          aria-label="Close"
-        ></button>
-      </div>
-      <div class="modal-body text-center">
-        <div
-          id="imageLoadError"
-          class="alert alert-warning"
-          style="display: none"
-        >
-          Erro ao carregar a imagem
-        </div>
-        <img
-          id="modalImage"
-          src=""
-          alt="Imagem"
-          class="img-fluid rounded shadow"
-          style="max-height: 70vh"
-        />
-      </div>
-      <div class="modal-footer">
-        <button
-          type="button"
-          class="btn btn-outline-secondary"
-          data-bs-dismiss="modal"
-        >
-          <i class="bi bi-x-circle"></i> Fechar
-        </button>
-        <button type="button" class="btn btn-primary" id="downloadImageBtn">
-          <i class="bi bi-download"></i> Download
-        </button>
+  {% else %}
+  <!-- Estado vazio: nada processado ainda. -->
+  <div class="col-12">
+    <div class="card">
+      <div class="empty-state">
+        <span class="empty-icon"><i class="bi bi-inbox"></i></span>
+        <p class="empty-title mb-1">Nenhum resultado por aqui ainda</p>
+        <p class="mb-3">
+          Envie imagens e processe o primeiro lote para ver avarias, uso interno
+          e erros aparecerem aqui.
+        </p>
+        <a href="{{ url_for('upload_page') }}" class="btn btn-primary">
+          <i class="bi bi-cloud-upload"></i> Enviar imagens
+        </a>
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
+{% endblock %} {% block scripts %}
+<script src="{{ static_v('js/pages/dashboard.js') }}" defer></script>
+
+{% include "_modal_imagem.html" %}
 
 {% endblock %}
