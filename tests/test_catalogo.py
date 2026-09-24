@@ -161,5 +161,9 @@ class TestPopularDoHistorico:
             [{"Produto": "X", "Código de Barras": "7897274410245"}],
         )
         catalogo.popular_do_historico()
+        antes = catalogo.buscar("7897274410245")
         resultado = catalogo.popular_do_historico()
         assert resultado["total"] == 1  # não duplica
+        depois = catalogo.buscar("7897274410245")
+        assert depois["vezes_visto"] == antes["vezes_visto"]
+        assert depois["atualizado_em"] == antes["atualizado_em"]

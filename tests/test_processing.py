@@ -66,6 +66,8 @@ class TestExtracaoNaoRepeteNoBackground:
         """Teste de integração leve: a rota /processar não deve deixar a
         thread reextrair o que ela mesma já extraiu de forma síncrona."""
         from autoavaria import create_app
+        from autoavaria.services import app_state
+        monkeypatch.setattr(app_state, "processamento_ativo", False)
 
         pasta_imagens = tmp_path / "imagens"
         pasta_imagens.mkdir()
@@ -112,6 +114,8 @@ class TestProcessarComForcar:
         """Não testamos a extração real aqui (já coberta em test_extraction.py) -
         só que o parâmetro do request chega até extrair_arquivos_comprimidos."""
         from autoavaria import create_app
+        from autoavaria.services import app_state
+        monkeypatch.setattr(app_state, "processamento_ativo", False)
 
         pasta_imagens = tmp_path / "imagens"
         pasta_imagens.mkdir()
@@ -142,3 +146,23 @@ class TestProcessarComForcar:
         client.post("/processar", json={"forcar_reprocessamento": True})
 
         assert chamadas["forcar"] is True
+
+
+def test_pipeline_com_falha_nao_vira_sucesso_por_excel_antigo(monkeypatch, tmp_path):
+    import autoavaria.services.extraction_pipeline as pipeline
+
+    pasta_imagens = tmp_path / "imagens"
+    pasta_imagens.mkdir()
+    (pasta_imagens / "IMG-1.jpg").write_bytes(b"imagem")
+    arquivo_excel_antigo = tmp_path / "Relatorio_Mestre_Produtos.xlsx"
+    arquivo_excel_antigo.write_bytes(b"relatorio anterior")
+
+    monkeypatch.setattr(processing_route, "DIRETORIO_IMAGENS", str(pasta_imagens))
+    monkeypatch.setattr(processing_route, "ARQUIVO_SAIDA_EXCEL", str(arquivo_excel_antigo))
+    monkeypatch.setattr(
+        processing_route, "verificar_e_corrigir_configuracao", lambda modo=None: (True, "ok")
+    )
+    monkeypatch.setattr(pipeline, "main", lambda modo=None, callback_progresso=None: False)
+    monkeypatch.delenv("VERCEL", raising=False)
+
+    assert processing_route.executar_processamento_principal() is False

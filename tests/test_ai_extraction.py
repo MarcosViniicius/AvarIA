@@ -125,6 +125,33 @@ class TestProcessarResultadoArquivo:
         assert uso_interno[0]["Marca"] == "X"
         assert uso_interno[0]["Código de Barras"] == "123"
 
+    def test_resultado_misto_separa_itens_por_categoria(self):
+        resultados = {
+            "IMG-misto.jpg": {
+                "tipo": "Misto",
+                "itens": [
+                    {"categoria": "Avaria", "produto": "TOMATE", "peso": "0,5kg"},
+                    {"categoria": "Uso Interno", "produto": "SACO", "codigo_barras": "123"},
+                ],
+            }
+        }
+        avarias, uso_interno, erros = [], [], []
+        processar_resultado_arquivo(
+            "IMG-misto.jpg", resultados, {}, "/imagens", avarias, uso_interno, erros
+        )
+        assert [item["Produto"] for item in avarias] == ["TOMATE"]
+        assert [item["Produto"] for item in uso_interno] == ["SACO"]
+        assert not erros
+
+    def test_categoria_sem_itens_vira_erro(self):
+        erros = []
+        processar_resultado_arquivo(
+            "IMG-vazia.jpg", {"IMG-vazia.jpg": {"tipo": "Avaria", "itens": []}},
+            {}, "/imagens", [], [], erros,
+        )
+        assert len(erros) == 1
+        assert "não retornou itens" in erros[0]["Detalhes do Erro"]
+
     def test_erro_gera_linha_com_detalhes(self):
         resultados = {"IMG-3.jpg": {"tipo": "Erro", "detalhes": "Falha na API"}}
         erros = []

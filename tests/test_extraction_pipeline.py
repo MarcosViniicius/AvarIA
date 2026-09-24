@@ -106,6 +106,52 @@ class TestLogSoDepoisDeGravar:
         # E o processamento não pode ter marcado tudo como pronto.
         assert len(processados) < 4
 
+    def test_falha_de_excel_nao_marca_imagens_como_processadas(self, ambiente_isolado, monkeypatch):
+        def fake_extrair(lote, provider, mensagens):
+            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            return json.loads(_resposta_ok(nomes)), 10
+
+        def falhar_ao_salvar(*args, **kwargs):
+            raise OSError("Excel bloqueado")
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+        monkeypatch.setattr(pipeline, "salvar_relatorio_excel", falhar_ao_salvar)
+
+        assert pipeline.main() is False
+        assert pipeline.carregar_logs() == set()
+        assert len(list(ambiente_isolado["imagens"].iterdir())) == 4
+
+    def test_callback_de_progresso_reflete_imagens_concluidas(self, ambiente_isolado, monkeypatch):
+        def fake_extrair(lote, provider, mensagens):
+            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            return json.loads(_resposta_ok(nomes)), 10
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+        progresso = []
+
+        assert pipeline.main(callback_progresso=progresso.append) is True
+        assert progresso[-1]["atual"] == 4
+        assert progresso[-1]["total"] == 4
+
+    def test_cancelamento_persiste_o_lote_que_ja_terminou(self, ambiente_isolado, monkeypatch):
+        def fake_extrair(lote, provider, mensagens):
+            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            return json.loads(_resposta_ok(nomes)), 10
+
+        chamadas_cancelamento = iter([True])
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+        monkeypatch.setattr(
+            pipeline, "verificar_cancelamento", lambda: next(chamadas_cancelamento, False)
+        )
+
+        assert pipeline.main() is False
+        assert len(pipeline.carregar_logs()) == 2
+        assert len(_imagens_com_dado_no_excel(ambiente_isolado["excel"])) == 2
+        assert pipeline.db.listar_execucoes(limite=1)[0]["status"] == "cancelado"
+
     def test_grava_o_lote_antes_de_marcar_como_processado(self, ambiente_isolado, monkeypatch):
         """A ordem das operações é o que garante a invariante acima: primeiro
         salvar no Excel, só depois escrever no log de processados."""
@@ -274,6 +320,10 @@ class TestReanaliseArquivaImagemCorrigida:
         assert resultado["corrigidos"] == 1
         assert not (pasta_imagens / "IMG-1.jpg").exists()
         assert (pasta_arquivadas / "IMG-1.jpg").exists()
+        execucao = pipeline.db.listar_execucoes(limite=1)[0]
+        assert execucao["imagens_total"] == 1
+        assert execucao["avarias"] == 1
+        assert len(pipeline.db.obter_execucao(execucao["id"])["itens"]) == 1
 
     def test_imagem_ainda_com_erro_nao_e_arquivada(self, tmp_path, monkeypatch, tmp_db):
         from PIL import Image
@@ -314,6 +364,10 @@ class TestReanaliseArquivaImagemCorrigida:
         assert resultado["corrigidos"] == 0
         assert (pasta_imagens / "IMG-1.jpg").exists()
         assert not pasta_arquivadas.exists() or not any(pasta_arquivadas.iterdir())
+        execucao = pipeline.db.listar_execucoes(limite=1)[0]
+        assert execucao["imagens_total"] == 1
+        assert execucao["erros"] == 1
+        assert len(pipeline.db.obter_execucao(execucao["id"])["itens"]) == 1
 
 
 class TestLinhaDeErro:
@@ -365,14 +419,14 @@ class TestModoSemIA:
         monkeypatch.setattr(pipeline, "carregar_configuracao", lambda: config_fake)
         return {"imagens": pasta_imagens, "excel": excel}
 
-    def test_processa_sem_nenhuma_api_key(self, ambiente_com_codigo_de_barras):
+    def test_ean_sem_categoria_vai_para_revisao_no_modo_sem_ia(self, ambiente_com_codigo_de_barras):
         from autoavaria.services.report_editing import carregar_todas_sheets
 
         pipeline.main()  # usa modo_extracao do config ("sem_ia"), sem provider
 
         sheets = carregar_todas_sheets(str(ambiente_com_codigo_de_barras["excel"]))
-        assert len(sheets["Uso Interno"]) == 1
-        assert sheets["Uso Interno"]["Código de Barras"].iloc[0] == "7897274410245"
+        assert len(sheets["Erros de Análise"]) == 1
+        assert "não informa se é Avaria ou Uso Interno" in sheets["Erros de Análise"]["Detalhes do Erro"].iloc[0]
 
     def test_modo_explicito_por_parametro_tem_prioridade_sobre_config(
         self, tmp_path, monkeypatch, tmp_db
@@ -652,3 +706,51 @@ class TestReanalisarExecucao:
         assert resultado["sucesso"] is True
         assert resultado["total_arquivos"] == 1  # 1 imagem única, não 2 linhas
         assert chamadas_por_caminho[caminho_imagem] == 1  # IA chamada uma única vez para essa imagem
+
+    def test_resolve_caminho_antigo_para_imagem_arquivada(self, tmp_path, monkeypatch, tmp_db):
+        import os
+        from PIL import Image
+
+        pendentes = tmp_path / "imagens_para_analisar"
+        arquivadas = tmp_path / "imagens_processadas"
+        pendentes.mkdir()
+        arquivadas.mkdir()
+        Image.new("RGB", (4, 4), color="green").save(arquivadas / "IMG-arquivada.jpg")
+
+        excel = tmp_path / "Relatorio.xlsx"
+        caminho_antigo = str(pendentes / "IMG-arquivada.jpg")
+        item = {
+            "Produto": "TOMATE", "Quantidade": 1, "Peso": "1kg",
+            "Observação da Mensagem": "Nenhuma",
+            "Caminho da Imagem": caminho_antigo, "Ver Imagem": caminho_antigo,
+        }
+        pipeline.salvar_relatorio_excel(str(excel), [item], [], [])
+        run_id = tmp_db.iniciar_execucao("processamento", imagens_total=1)
+        tmp_db.registrar_itens(run_id, "Avarias", [item])
+        tmp_db.finalizar_execucao(run_id, "concluido", avarias=1)
+
+        monkeypatch.setattr(pipeline, "ARQUIVO_SAIDA_EXCEL", excel)
+        monkeypatch.setattr(pipeline, "UPLOAD_FOLDER", pendentes)
+        monkeypatch.setattr(pipeline, "ARCHIVE_FOLDER", arquivadas)
+        monkeypatch.setattr(
+            pipeline, "carregar_configuracao",
+            lambda: {
+                "api": {"provider": "gemini", "gemini_api_key": "fake-key"},
+                "processamento": {"request_delay": 0},
+            },
+        )
+        monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
+
+        caminhos_analisados = []
+
+        def fake_extrair(lote, provider, mensagens):
+            caminhos_analisados.extend(lote)
+            nome = os.path.basename(lote[0])
+            return {nome: {"tipo": "Avaria", "itens": [{"produto": "TOMATE NOVO", "peso": "1kg"}]}}, 1
+
+        monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
+        resultado = pipeline.reanalisar_execucao(run_id)
+
+        assert resultado["sucesso"] is True
+        assert resultado["erros"] == 0
+        assert caminhos_analisados == [str(arquivadas / "IMG-arquivada.jpg")]

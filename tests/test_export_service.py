@@ -151,3 +151,13 @@ class TestEscreverTxtCompacto:
         es.escrever_txt_compacto(str(caminho), "TESTE", {"Avarias": df})
         conteudo = caminho.read_text(encoding="utf-8")
         assert "Total de itens: 2" in conteudo
+
+    def test_previa_e_identica_ao_arquivo_gravado(self, tmp_path):
+        caminho = tmp_path / "teste.txt"
+        secoes = {
+            "Uso Interno": pd.DataFrame([
+                {"Produto": "SACO", "Quantidade Total": "2", "Código de Barras": "123"}
+            ])
+        }
+        es.escrever_txt_compacto(str(caminho), "TESTE", secoes)
+        assert es.renderizar_txt_compacto("TESTE", secoes) == caminho.read_text(encoding="utf-8")

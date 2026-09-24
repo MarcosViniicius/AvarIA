@@ -101,6 +101,42 @@ class TestRelatoriosUnificados:
         assert restantes[0]["arquivo_xlsx"] == "b.xlsx"
 
 
+class TestRegistrarUnificadoGerado:
+    """O helper é o único ponto que grava um unificado, para os dois escopos
+    (global e por execução) não divergirem no formato do ``resumo`` — foi
+    exatamente essa divergência que fez o ``execucao_id`` ser gravado e nunca
+    exibido."""
+
+    def test_escopo_global(self, tmp_db):
+        tmp_db.registrar_unificado_gerado(nome_arquivo="u.xlsx", formato="xlsx")
+        rel = tmp_db.listar_relatorios_unificados()[0]
+        assert rel["arquivo_xlsx"] == "u.xlsx"
+        assert rel["arquivo_txt"] is None
+        assert rel["resumo"]["escopo"] == "global"
+        assert "execucao_id" not in rel["resumo"]
+
+    def test_escopo_execucao(self, tmp_db):
+        tmp_db.registrar_unificado_gerado(
+            nome_arquivo="u.txt",
+            formato="txt",
+            execucao_id=22,
+            total_itens=74,
+            contagem_por_secao={"Avarias": 10},
+        )
+        rel = tmp_db.listar_relatorios_unificados()[0]
+        assert rel["arquivo_txt"] == "u.txt"
+        assert rel["arquivo_xlsx"] is None
+        assert rel["resumo"]["escopo"] == "execucao"
+        assert rel["resumo"]["execucao_id"] == 22
+        assert rel["resumo"]["contagem_por_secao"] == {"Avarias": 10}
+        assert rel["total_itens"] == 74
+
+    def test_formato_txt_nao_marca_xlsx(self, tmp_db):
+        tmp_db.registrar_unificado_gerado(nome_arquivo="u.txt", formato="txt")
+        rel = tmp_db.listar_relatorios_unificados()[0]
+        assert rel["arquivo_xlsx"] is None and rel["arquivo_txt"] == "u.txt"
+
+
 def test_contar_itens_com_imagem(tmp_db):
     run_id = tmp_db.iniciar_execucao("processamento")
     tmp_db.registrar_itens(run_id, "Avarias", [{"Produto": "A", "Caminho da Imagem": "x.jpg"}])

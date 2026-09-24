@@ -8,6 +8,7 @@ from autoavaria.services.unification import (
     extrair_peso_de_valor,
     extrair_quantidade_de_observacao,
     normalizar_texto,
+    renderizar_secciones_como_texto,
     unificar_itens_avarias,
     unificar_itens_uso_interno,
 )
@@ -21,6 +22,14 @@ class TestNormalizarTexto:
         assert normalizar_texto("") == ""
         assert normalizar_texto("-") == ""
         assert normalizar_texto(None) == ""
+
+
+def test_previa_tabular_nao_exibe_nan_e_escapa_quebras_de_linha():
+    df = pd.DataFrame([{"Produto": "TOMATE", "Observação": "linha 1\nlinha 2", "Peso": None}])
+    texto = renderizar_secciones_como_texto({"Avarias": df})
+    assert "nan" not in texto.lower()
+    assert "-" in texto
+    assert "linha 1 / linha 2" in texto
 
 
 class TestExtrairPesoDeValor:
@@ -104,8 +113,31 @@ class TestUnificarItensAvarias:
         assert len(resultado) == 1
         assert auditoria == {}
 
+    def test_sem_peso_soma_quantidade_da_linha(self):
+        df = pd.DataFrame([
+            {"Produto": "Alface", "Peso": "N/A", "Quantidade": 4},
+            {"Produto": "ALFACE", "Peso": "N/A", "Quantidade": 2},
+        ])
+        resultado, _ = unificar_itens_avarias(df)
+        assert resultado.iloc[0]["Quantidade Total"] == "6 un"
+
 
 class TestUnificarItensUsoInterno:
+    def test_prefere_quantidade_da_linha_a_numeros_de_outras_mercadorias_na_observacao(self):
+        df = pd.DataFrame([
+            {
+                "Produto": "Produto A", "Quantidade": 4, "Código de Barras": "111",
+                "Observação da Mensagem": "4 Produto A | 2 Produto B",
+            },
+            {
+                "Produto": "Produto B", "Quantidade": 2, "Código de Barras": "222",
+                "Observação da Mensagem": "4 Produto A | 2 Produto B",
+            },
+        ])
+        resultado, _ = unificar_itens_uso_interno(df)
+        por_codigo = dict(zip(resultado["Código de Barras"], resultado["Quantidade Total"]))
+        assert por_codigo == {"111": "4", "222": "2"}
+
     def test_agrupa_por_codigo_barras_mesmo_com_nomes_iguais(self):
         df = pd.DataFrame(
             [

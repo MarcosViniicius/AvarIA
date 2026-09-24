@@ -194,6 +194,21 @@ class TestExtracaoZipNaoSobrescreve:
         extrator.extrair_arquivo(origem / "lote.zip", criar_subpasta=False)
         assert (destino / "fotos" / "IMG-1.jpg").read_text() == "conteudo"
 
+    @pytest.mark.parametrize("nome_membro", ["../fora.txt", "nested/../../fora.txt", r"..\fora.txt", r"C:\fora.txt"])
+    def test_zip_nao_pode_gravar_fora_da_pasta_destino(self, tmp_path, nome_membro):
+        origem = tmp_path / "origem"
+        destino = tmp_path / "destino"
+        origem.mkdir()
+        destino.mkdir()
+        _criar_zip(origem / "malicioso.zip", {nome_membro: "nao gravar"})
+
+        extrator = ExtratorArquivos(pasta_origem=str(origem), pasta_destino=str(destino))
+        resultado = extrator.extrair_arquivo(origem / "malicioso.zip", criar_subpasta=False)
+
+        assert resultado is False
+        assert not (tmp_path / "fora.txt").exists()
+        assert list(destino.iterdir()) == []
+
 
 class TestExtracaoConsideraPastaDeArquivo:
     """ExtratorArquivos(pasta_arquivo=...) - a pasta de imagens já arquivadas

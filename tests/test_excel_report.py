@@ -9,6 +9,7 @@ import openpyxl
 import pandas as pd
 import pytest
 
+from autoavaria.services import excel_report
 from autoavaria.services.excel_report import salvar_relatorio_excel
 
 
@@ -56,3 +57,25 @@ class TestSalvarRelatorioExcel:
         col_idx = headers.index("Ver Imagem") + 1
         celula = wb["Avarias"].cell(row=2, column=col_idx)
         assert celula.hyperlink is not None
+
+    def test_falha_ao_escrever_preserva_relatorio_existente(self, tmp_path, monkeypatch):
+        caminho = tmp_path / "relatorio.xlsx"
+        salvar_relatorio_excel(str(caminho), [{"Produto": "Tomate"}], [], [])
+        conteudo_anterior = caminho.read_bytes()
+
+        def falhar(*args, **kwargs):
+            raise OSError("arquivo bloqueado")
+
+        monkeypatch.setattr(excel_report, "escrever_xlsx", falhar)
+        with pytest.raises(OSError, match="arquivo bloqueado"):
+            salvar_relatorio_excel(str(caminho), [{"Produto": "Alface"}], [], [])
+
+        assert caminho.read_bytes() == conteudo_anterior
+        assert not list(tmp_path.glob(".relatorio_tmp_*.xlsx"))
+
+    def test_excel_existente_ilegivel_nao_e_substituido(self, tmp_path):
+        caminho = tmp_path / "relatorio.xlsx"
+        caminho.write_bytes(b"conteudo invalido")
+        with pytest.raises(Exception):
+            salvar_relatorio_excel(str(caminho), [{"Produto": "Alface"}], [], [])
+        assert caminho.read_bytes() == b"conteudo invalido"

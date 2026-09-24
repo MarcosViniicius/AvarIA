@@ -54,8 +54,10 @@ class TestHistoricoReanalisar:
 
         chamadas = {}
 
-        def fake_reanalisar_execucao(rid, callback_progresso=None):
+        def fake_reanalisar_execucao(rid, callback_progresso=None, categorias=None, item_ids=None):
             chamadas["run_id"] = rid
+            chamadas["categorias"] = categorias
+            chamadas["item_ids"] = item_ids
             return {"sucesso": True, "run_id": rid + 100, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0}
 
         monkeypatch.setattr(
@@ -68,6 +70,49 @@ class TestHistoricoReanalisar:
 
         time.sleep(0.2)  # dá tempo da thread de background rodar
         assert chamadas["run_id"] == run_id
+        assert chamadas["categorias"] is None
+        assert chamadas["item_ids"] is None
+
+    def test_reanalisar_com_filtro_repassa_categorias_e_ids(self, client, tmp_db, monkeypatch):
+        """Reanálise seletiva: a rota repassa categorias/item_ids ao pipeline."""
+        from autoavaria.services import app_state
+
+        run_id = tmp_db.iniciar_execucao("processamento")
+        tmp_db.finalizar_execucao(run_id, "concluido")
+        monkeypatch.setattr(app_state, "processamento_ativo", False)
+
+        chamadas = {}
+
+        def fake_reanalisar_execucao(rid, callback_progresso=None, categorias=None, item_ids=None):
+            chamadas["categorias"] = categorias
+            chamadas["item_ids"] = item_ids
+            return {"sucesso": True, "run_id": rid + 100}
+
+        monkeypatch.setattr(
+            "autoavaria.services.extraction_pipeline.reanalisar_execucao", fake_reanalisar_execucao
+        )
+
+        resposta = client.post(
+            f"/historico/execucao/{run_id}/reanalisar",
+            json={"categorias": ["Avarias"], "item_ids": [7]},
+        )
+        assert resposta.get_json()["success"] is True
+        time.sleep(0.2)
+        assert chamadas["categorias"] == ["Avarias"]
+        assert chamadas["item_ids"] == [7]
+
+    def test_reanalisar_com_categoria_invalida_retorna_400(self, client, tmp_db, monkeypatch):
+        from autoavaria.services import app_state
+
+        run_id = tmp_db.iniciar_execucao("processamento")
+        tmp_db.finalizar_execucao(run_id, "concluido")
+        monkeypatch.setattr(app_state, "processamento_ativo", False)
+
+        resposta = client.post(
+            f"/historico/execucao/{run_id}/reanalisar", json={"categorias": ["Inexistente"]}
+        )
+        assert resposta.status_code == 400
+        assert resposta.get_json()["success"] is False
 
 
 class TestHistoricoExecucaoBotaoReanalisar:

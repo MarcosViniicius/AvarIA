@@ -35,17 +35,18 @@ class TestMotorIA:
 
 
 class TestMotorCodigoBarras:
-    def test_uso_interno_sem_catalogo_ainda_retorna_codigo(self, tmp_db):
+    def test_ean_sem_categoria_nao_assume_uso_interno(self, tmp_db):
         motor = engines.MotorCodigoBarras()
         with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("7897274410245")]):
             resultado = motor.processar_imagem("qualquer.jpg", None)
-        assert resultado["tipo"] == "Uso Interno"
-        item = resultado["itens"][0]
-        assert item["codigo_barras"] == "7897274410245"
-        assert item["quantidade"] == 1
+        assert resultado["tipo"] == "Erro"
+        assert "não informa" in resultado["detalhes"]
 
     def test_uso_interno_com_catalogo_traz_produto_e_marca(self, tmp_db):
-        catalogo.registrar("7897274410245", produto="LAVA-LOUÇAS", marca="GUARANI")
+        catalogo.registrar(
+            "7897274410245", produto="LAVA-LOUÇAS", marca="GUARANI",
+            categoria_padrao="Uso Interno",
+        )
         motor = engines.MotorCodigoBarras()
         with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("7897274410245")]):
             resultado = motor.processar_imagem("qualquer.jpg", None)
@@ -71,10 +72,28 @@ class TestMotorCodigoBarras:
 
     def test_quantidade_do_contexto_e_aplicada(self, tmp_db):
         motor = engines.MotorCodigoBarras()
-        contexto = ContextoImagem(imagem="a.jpg", quantidade=7)
+        contexto = ContextoImagem(imagem="a.jpg", textos=["uso interno"], quantidade=7)
         with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("7897274410245")]):
             resultado = motor.processar_imagem("a.jpg", contexto)
         assert resultado["itens"][0]["quantidade"] == 7
+
+    def test_contexto_explicito_classifica_ean_como_avaria(self, tmp_db):
+        motor = engines.MotorCodigoBarras()
+        contexto = ContextoImagem(imagem="a.jpg", textos=["produto avariado"], quantidade=1)
+        with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("7897274410245")]):
+            resultado = motor.processar_imagem("a.jpg", contexto)
+        assert resultado["tipo"] == "Avaria"
+
+    def test_codigos_de_categorias_diferentes_permitem_resultado_misto(self, tmp_db):
+        catalogo.registrar(
+            "7897274410245", produto="LAVA-LOUÇAS", categoria_padrao="Uso Interno"
+        )
+        motor = engines.MotorCodigoBarras()
+        codigos = [_codigo("2001400005167"), _codigo("7897274410245")]
+        with patch.object(engines.barcode, "ler_imagem", return_value=codigos):
+            resultado = motor.processar_imagem("a.jpg", None)
+        assert resultado["tipo"] == "Misto"
+        assert {item["categoria"] for item in resultado["itens"]} == {"Avaria", "Uso Interno"}
 
     def test_nenhum_codigo_lido_vira_erro(self, tmp_db):
         motor = engines.MotorCodigoBarras()
@@ -92,7 +111,10 @@ class TestMotorCodigoBarras:
 
 class TestMotorHibrido:
     def test_resolvido_localmente_nao_chama_ia(self, tmp_db):
-        catalogo.registrar("7897274410245", produto="LAVA-LOUÇAS", marca="GUARANI")
+        catalogo.registrar(
+            "7897274410245", produto="LAVA-LOUÇAS", marca="GUARANI",
+            categoria_padrao="Uso Interno",
+        )
         provider = MagicMock()
         motor = engines.MotorHibrido(provider)
         with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("7897274410245")]), \
