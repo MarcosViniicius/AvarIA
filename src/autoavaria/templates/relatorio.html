@@ -47,9 +47,11 @@ endblock %} {% block head %}
           <i class="bi bi-pencil-square"></i> Editar Dados
         </a>
         {% endif %}
+        <!-- Abre o modal unificado (js/unificacao-modal.js); data-unif-abrir
+             evita onclick inline, que roda no escopo global. -->
         <button
           class="btn btn-warning me-2"
-          onclick="abrirModalUnificacao()"
+          data-unif-abrir
           title="Unificar itens equivalentes e gerar relatório consolidado"
         >
           <i class="bi bi-funnel"></i> Unificar Relatório
@@ -398,6 +400,10 @@ endblock %} {% block head %}
 
 {% include "_modal_imagem.html" %}
 
+{% include "_modal_unificacao.html" %}
+
+{% include "_modal_imagem.html" %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -407,11 +413,23 @@ endblock %} {% block head %}
 {% if execucao %}
 <script>window.ULTIMA_EXECUCAO_ID = {{ execucao.id }};</script>
 {% endif %}
+<!-- Config do modal de unificacao (modulo js/unificacao-modal.js, compartilhado
+     com a tela de Historico de execucao). -->
+<script>
+  window.UNIFICACAO = {
+    escopo: "mestre",
+    comSelecao: true,
+    invertextoUrl: {{ (dados_invertexto.url if dados_invertexto else 'https://www.invertexto.com/autoava') | tojson }},
+  };
+</script>
 <!-- Reanálise seletiva (compartilhado com Histórico e Editar Dados) -->
 <script src="{{ static_v('js/reanalise-selecao.js') }}" defer></script>
 
-<!-- Ações da página (unificação, exportação, reanálise de erros) -->
+<!-- Ações da página (exportação, reanálise de erros) -->
 <script src="{{ static_v('js/relatorio-acoes.js') }}" defer></script>
+
+<!-- Unificação: módulo único que serve esta tela e o Histórico -->
+<script src="{{ static_v('js/unificacao-modal.js') }}" defer></script>
 
 <!-- Modal de Exportação -->
 <div class="modal fade" id="exportacaoModal" tabindex="-1" aria-hidden="true">
@@ -471,186 +489,4 @@ endblock %} {% block head %}
     </div>
   </div>
 </div>
-
-<!-- Modal de Unificação -->
-<div class="modal fade" id="unificacaoModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header" style="background: rgba(255, 107, 53, 0.2); border-bottom: 1px solid rgba(255, 107, 53, 0.3);">
-        <h5 class="modal-title">
-          <i class="bi bi-funnel text-warning me-2"></i>Unificação de relatório
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnFecharUnificacao"></button>
-      </div>
-      <div class="modal-body">
-        <!-- Estado: Explicação inicial -->
-        <div id="unificacaoExplicacao">
-          <div class="alert alert-info mb-3">
-            <h6 class="alert-heading">
-              <i class="bi bi-info-circle me-2"></i>Como funciona a unificação?
-            </h6>
-            <p class="mb-2">
-              Este processo consolida itens equivalentes:
-            </p>
-            <ul class="mb-2">
-              <li><strong>Identifica produtos iguais</strong> (ex: "tomate", "Tomate", "TOMATE")</li>
-              <li><strong>Soma quantidades</strong> com a mesma unidade de medida</li>
-              <li><strong>Exporta apenas dados unificados</strong></li>
-            </ul>
-          </div>
-          
-          <!-- Seleção de formato de exportação -->
-          <div class="mb-3">
-            <label class="form-label fw-bold">
-              <i class="bi bi-file-earmark me-2"></i>Formato de Exportação:
-            </label>
-            <div class="btn-group w-100" role="group">
-              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoXlsx" value="xlsx" checked>
-              <label class="btn btn-outline-success" for="formatoXlsx">
-                <i class="bi bi-file-earmark-excel me-2"></i>Excel (.xlsx)
-              </label>
-              
-              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoTxt" value="txt">
-              <label class="btn btn-outline-primary" for="formatoTxt">
-                <i class="bi bi-file-earmark-text me-2"></i>Texto (.txt)
-              </label>
-            </div>
-          </div>
-          
-          <!-- Seleção de Seções e Colunas -->
-          <div class="card mb-3">
-            <div class="card-header bg-transparent">
-              <h6 class="mb-0">
-                <i class="bi bi-sliders me-2"></i>Personalizar Exportação
-              </h6>
-            </div>
-            <div class="card-body">
-              <div class="row">
-                <!-- Seções -->
-                <div class="col-md-4">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0">Seções</h6>
-                    <div class="btn-group btn-group-sm">
-                      <button type="button" class="btn btn-outline-success btn-sm" onclick="selecionarTodasSecoesUnificacao(true)" title="Selecionar Todas">
-                        <i class="bi bi-check-all"></i>
-                      </button>
-                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="selecionarTodasSecoesUnificacao(false)" title="Desmarcar Todas">
-                        <i class="bi bi-x-lg"></i>
-                      </button>
-                    </div>
-                  </div>
-                  <div id="secoesUnificacao" class="overflow-auto" style="max-height: 200px;">
-                    <div class="text-center text-muted">
-                      <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Carregando...</span>
-                      </div>
-                      <small class="d-block mt-2">Carregando seções...</small>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Colunas -->
-                <div class="col-md-8">
-                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0">Colunas</h6>
-                    <div class="btn-group btn-group-sm">
-                      <button type="button" class="btn btn-outline-success btn-sm" onclick="selecionarTodasColunasUnificacao(true)" title="Selecionar Todas">
-                        <i class="bi bi-check-all"></i>
-                      </button>
-                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="selecionarTodasColunasUnificacao(false)" title="Desmarcar Todas">
-                        <i class="bi bi-x-lg"></i>
-                      </button>
-                    </div>
-                  </div>
-                  <div id="colunasUnificacao" class="overflow-auto" style="max-height: 200px;">
-                    <div class="text-center text-muted">
-                      <small>Selecione uma seção para ver as colunas disponíveis</small>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="alert alert-warning">
-            <i class="bi bi-exclamation-triangle me-2"></i>
-            <strong>Importante:</strong> Será gerado um novo arquivo contendo apenas os dados consolidados das seções e colunas selecionadas.
-          </div>
-        </div>
-        
-        <!-- Estado: Processando -->
-        <div id="unificacaoProcessando" class="d-none">
-          <div class="text-center mb-3">
-            <div class="spinner-border text-warning" role="status" style="width: 3rem; height: 3rem;">
-              <span class="visually-hidden">Processando...</span>
-            </div>
-          </div>
-          <h5 class="text-center mb-3">Processando unificação...</h5>
-          <div class="progress mb-3" style="height: 25px;">
-            <div
-              class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
-              role="progressbar"
-              style="width: 100%"
-            >
-              Analisando e consolidando dados...
-            </div>
-          </div>
-          <p class="text-center text-muted">
-            Aguarde enquanto identificamos itens equivalentes e geramos o relatório consolidado.
-          </p>
-        </div>
-        
-<!-- Estado: Resultado -->
-        <div id="unificacaoResultado" class="d-none">
-          <div class="alert alert-success">
-            <h6 class="alert-heading">
-              <i class="bi bi-check-circle me-2"></i>Unificación Concluída!
-            </h6>
-            <hr>
-            <p id="unificacaoResultadoMensagem" class="mb-2"></p>
-            <div class="d-grid gap-2 mt-3">
-              <button class="btn btn-success btn-lg" id="btnDownloadUnificado">
-                <i class="bi bi-download me-2"></i>Baixar Relatório Unificado
-              </button>
-            </div>
-          </div>
-          <div class="d-flex align-items-center gap-2 mb-2 mt-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExpandirUnificado">
-              <i class="bi bi-eye me-1"></i>Expandir para visualizar
-            </button>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btnCopiarUnificado">
-              <i class="bi bi-clipboard me-1"></i>Copiar
-            </button>
-          </div>
-          <div id="unificacaoAreaVistaPrevia" class="d-none">
-            <label class="form-label fw-bold small">Contenido unificado:</label>
-            <textarea id="unificacaoVistaPrevia" class="form-control" rows="10" readonly style="font-family: monospace; white-space: pre; white-space: pre-wrap;"></textarea>
-          </div>
-        </div>
-          </div>
-        </div>
-        
-        <!-- Estado: Erro -->
-        <div id="unificacaoErro" class="d-none">
-          <div class="alert alert-danger">
-            <h6 class="alert-heading">
-              <i class="bi bi-x-circle me-2"></i>Erro na Unificação
-            </h6>
-            <hr>
-            <p id="unificacaoErroMensagem" class="mb-0"></p>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="btnCancelarUnificacao">
-          Cancelar
-        </button>
-        <button type="button" class="btn btn-warning" id="btnIniciarUnificacao">
-          <i class="bi bi-funnel me-2"></i>Iniciar Unificação
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 {% endblock %}

@@ -1,0 +1,212 @@
+{# ==========================================================================
+   MODAL DE UNIFICAÇÃO (parcial única)
+
+   Era duplicado em relatorio.html e historico_execucao.html, com dois módulos
+   JS concorrentes (relatorio-acoes.js e historico-execucao.js) fazendo a mesma
+   coisa de formas diferentes. Agora é uma parcial só, parametrizada:
+
+     escopo         'mestre' (relatório completo) ou 'execucao' (uma execução)
+     com_selecao    true = mostra o seletor de seções/colunas (tela Relatório)
+
+   Os ids são os mesmos nas duas telas; quem difere é a ROTA chamada, decidida
+   pelo módulo unificado (js/unificacao-modal.js) a partir de window.UNIFICACAO.
+   Assim não há mais dois conjuntos de ids (ex.: btnDownloadUnificado vs
+   btnDownloadUnificadoExec) para manter em sincronia.
+   ========================================================================== #}
+<div class="modal fade" id="unificacaoModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog {% if com_selecao %}modal-lg {% endif %}modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-funnel text-warning me-2"></i>
+          {% if escopo == 'execucao' %}Unificar Itens da Execução{% else %}Unificação de relatório{% endif %}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Estado: explicação + formato (+ seleção, na tela de Relatório) -->
+        <div id="unificacaoExplicacao">
+          {% if escopo == 'execucao' %}
+          <p class="text-muted">
+            Consolida os itens de Avarias e Uso Interno <strong>desta execução</strong>,
+            agrupando produtos equivalentes e somando quantidades.
+          </p>
+          {% else %}
+          <div class="alert alert-info mb-3">
+            <h6 class="alert-heading">
+              <i class="bi bi-info-circle me-2"></i>Como funciona a unificação?
+            </h6>
+            <p class="mb-2">Este processo consolida itens equivalentes:</p>
+            <ul class="mb-2">
+              <li><strong>Identifica produtos iguais</strong> (ex: "tomate", "Tomate", "TOMATE")</li>
+              <li><strong>Soma quantidades</strong> com a mesma unidade de medida</li>
+              <li><strong>Exporta apenas dados unificados</strong></li>
+            </ul>
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">
+              <i class="bi bi-file-earmark me-2"></i>Formato de Exportação:
+            </label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoXlsx" value="xlsx" checked />
+              <label class="btn btn-outline-success" for="formatoXlsx">
+                <i class="bi bi-file-earmark-excel me-2"></i>Excel (.xlsx)
+              </label>
+              <input type="radio" class="btn-check" name="formatoUnificacao" id="formatoTxt" value="txt" />
+              <label class="btn btn-outline-primary" for="formatoTxt">
+                <i class="bi bi-file-earmark-text me-2"></i>Texto (.txt)
+              </label>
+            </div>
+          </div>
+
+          {% if com_selecao %}
+          <div class="card mb-3">
+            <div class="card-header bg-transparent">
+              <h6 class="mb-0"><i class="bi bi-sliders me-2"></i>Personalizar Exportação</h6>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Seções</h6>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-success btn-sm" data-unif-secoes="todas" title="Selecionar Todas">
+                        <i class="bi bi-check-all"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" data-unif-secoes="nenhuma" title="Desmarcar Todas">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="secoesUnificacao" class="overflow-auto" style="max-height: 200px;">
+                    <div class="text-center text-muted">
+                      <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                      </div>
+                      <small class="d-block mt-2">Carregando seções...</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-8">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Colunas</h6>
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-success btn-sm" data-unif-colunas="todas" title="Selecionar Todas">
+                        <i class="bi bi-check-all"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" data-unif-colunas="nenhuma" title="Desmarcar Todas">
+                        <i class="bi bi-x-lg"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="colunasUnificacao" class="overflow-auto" style="max-height: 200px;">
+                    <div class="text-center text-muted">
+                      <small>Selecione uma seção para ver as colunas disponíveis</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-warning mb-0">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Importante:</strong> Será gerado um novo arquivo contendo apenas os dados
+            consolidados das seções e colunas selecionadas.
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Estado: processando -->
+        <div id="unificacaoProcessando" class="d-none text-center">
+          <div class="spinner-border text-warning" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Processando...</span>
+          </div>
+          <h5 class="mt-3 mb-2">Processando unificação...</h5>
+          <p class="text-muted mb-0">
+            Aguarde enquanto identificamos itens equivalentes e geramos o relatório consolidado.
+          </p>
+        </div>
+
+        <!-- Estado: resultado -->
+        <div id="unificacaoResultado" class="d-none">
+          <div class="alert alert-success mb-0">
+            <h6 class="alert-heading">
+              <i class="bi bi-check-circle me-2"></i>Unificação concluída!
+            </h6>
+            <hr />
+            <p id="unificacaoResultadoMensagem" class="mb-3"></p>
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-success btn-lg" id="btnDownloadUnificado">
+                <i class="bi bi-download me-2"></i>Baixar Relatório Unificado
+              </button>
+              <button type="button" class="btn btn-outline-primary" id="btnEnviarInvertexto"
+                      {% if not dados_invertexto or not dados_invertexto.configurado %}disabled title="Integração com o invertexto não configurada"{% endif %}>
+                <i class="bi bi-send me-2"></i>Enviar para o invertexto
+              </button>
+            </div>
+          </div>
+
+          {# Confirmação persistente do envio: fica visível com o link pronto,
+             para não depender de um alerta que desaparece. #}
+          <div id="invertextoStatus" class="d-none mt-3">
+            <div class="alert alert-success mb-0">
+              <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-check-circle-fill text-success mt-1"></i>
+                <div class="flex-grow-1 min-w-0">
+                  <strong id="invertextoStatusTitulo">Relatório publicado no invertexto</strong>
+                  <p class="mb-2 small" id="invertextoStatusDetalhe"></p>
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" id="invertextoLink" readonly />
+                    <button type="button" class="btn btn-outline-secondary" id="btnCopiarLinkInvertexto" title="Copiar link">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                    <a class="btn btn-primary" id="btnAbrirInvertexto" href="#" target="_blank" rel="noopener">
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Abrir
+                    </a>
+                  </div>
+                  <p class="mb-0 mt-2 text-muted" style="font-size: 0.8rem;">
+                    <i class="bi bi-info-circle me-1"></i>Qualquer pessoa com este link pode ler o relatório.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExpandirUnificado">
+              <i class="bi bi-eye me-1"></i>Expandir para visualizar
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnCopiarUnificado">
+              <i class="bi bi-clipboard me-1"></i>Copiar
+            </button>
+          </div>
+          <div id="unificacaoAreaVistaPrevia" class="d-none mt-2">
+            <label class="form-label fw-bold small">Conteúdo unificado:</label>
+            <textarea id="unificacaoVistaPrevia" class="form-control" rows="10" readonly
+                      style="font-family: var(--font-mono); white-space: pre-wrap;"></textarea>
+          </div>
+        </div>
+
+        <!-- Estado: erro -->
+        <div id="unificacaoErro" class="d-none">
+          <div class="alert alert-danger mb-0">
+            <h6 class="alert-heading"><i class="bi bi-x-circle me-2"></i>Erro na Unificação</h6>
+            <hr />
+            <p id="unificacaoErroMensagem" class="mb-0"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-warning" id="btnIniciarUnificacao">
+          <i class="bi bi-funnel me-2"></i>Iniciar Unificação
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

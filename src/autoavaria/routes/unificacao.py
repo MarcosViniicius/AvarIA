@@ -12,6 +12,7 @@ from flask import jsonify, request, send_file, url_for
 from .blueprint import web_bp as app
 from .context import BASE_PATH
 from ..services import db as db_service
+from ..services import invertexto
 from ..services.export_service import (
     escrever_txt_compacto,
     escrever_xlsx,
@@ -298,6 +299,48 @@ def download_relatorio_unificado(filename):
     except Exception as e:
         print(f"❌ Erro no download do relatório unificado: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/enviar_invertexto", methods=["POST"])
+def api_enviar_invertexto():
+    """Envia a unificação do relatório mestre para o notepad do invertexto.
+
+    Espelha a rota do Histórico: o conteúdo é REGERADO no servidor (não vem do
+    cliente) e sanitizado antes de sair — a coluna "Caminho da Imagem" carrega
+    o caminho do disco de quem processou e não faz sentido compartilhar.
+
+    Corpo opcional: {"secoes": [...], "colunas": {...}} (os mesmos filtros da
+    unificação da tela).
+    """
+    if not invertexto.configurado():
+        return jsonify({
+            "success": False,
+            "message": "Integração com o invertexto não configurada.",
+        }), 400
+
+    data = request.get_json(silent=True) or {}
+    secoes_filtro = data.get("secoes")
+    colunas_filtro = data.get("colunas")
+
+    resultado = processar_unificacao_txt(secoes_filtro, colunas_filtro, return_contenido=True)
+    if len(resultado) == 4:
+        sucesso, mensagem, _arquivo, contenido = resultado
+    else:
+        sucesso, mensagem, _arquivo = resultado
+        contenido = ""
+
+    if not sucesso:
+        return jsonify({"success": False, "message": mensagem}), 400
+
+    texto = invertexto.sanitizar(contenido or "")
+    enviado, mensagem_envio = invertexto.enviar(texto)
+
+    return jsonify({
+        "success": enviado,
+        "message": mensagem_envio,
+        "url": invertexto.obter_config_publica()["url"],
+        "caracteres": len(texto),
+    }), (200 if enviado else 400)
 
 
 @app.route("/api/opcoes_unificacao")

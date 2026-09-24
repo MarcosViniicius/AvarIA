@@ -79,22 +79,19 @@ def test_nenhum_id_orfao(ids_no_js, ids_no_html):
 
 
 def test_unificacao_usa_o_id_correto_do_botao(client):
-    """O caso específico do bug: o botão de unificar é `btnUnificarExec`."""
+    """O botão de unificar abre o modal pelo módulo único (data-unif-abrir)."""
     html = client.get("/historico/execucao/25").get_data(as_text=True)
-    assert 'id="btnUnificarExec"' in html
+    assert "data-unif-abrir" in html
 
-    js = client.get("/static/js/historico-execucao.js").get_data(as_text=True)
-    # remove comentários: o id antigo pode ser citado na explicação do bug
-    codigo = re.sub(r"//[^\n]*", "", js)
-    codigo = re.sub(r"/\*.*?\*/", "", codigo, flags=re.S)
-    # a referência antiga (id inexistente) não pode voltar ao código
-    assert "btnIniciarUnificacaoExec" not in codigo
-    # e o id certo precisa ser de fato usado para esconder/mostrar o botão
-    assert 'getElementById("btnUnificarExec")' in codigo
+    js = client.get("/static/js/unificacao-modal.js").get_data(as_text=True)
+    assert "data-unif-abrir" in js
+    # nenhuma das telas pode voltar a usar onclick inline (escopo global)
+    assert "onclick=\"abrirModalUnificacao" not in html
 
 
 def test_bloco_do_invertexto_e_escondido_ao_reabrir(client):
     """Não pode sobrar o link de uma unificação anterior no modal."""
-    js = client.get("/static/js/historico-execucao.js").get_data(as_text=True)
-    # aparece tanto no abrir quanto no iniciar
-    assert js.count('getElementById("invertextoStatus")') >= 2
+    js = client.get("/static/js/unificacao-modal.js").get_data(as_text=True)
+    # resetar() esconde o bloco ao abrir o modal
+    assert 'var status = el("invertextoStatus")' in js
+    assert 'status.classList.add("d-none")' in js

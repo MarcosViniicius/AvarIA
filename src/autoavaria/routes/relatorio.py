@@ -22,6 +22,7 @@ from flask import (
 from .blueprint import web_bp as app
 from .context import ARCHIVE_FOLDER, ARQUIVO_SAIDA_EXCEL, BASE_PATH, DIRETORIO_IMAGENS, EXTENSOES_IMAGEM
 from ..services import db as db_service
+from ..services import invertexto
 from ..services.export_service import escrever_txt_detalhado, escrever_xlsx
 from ..services.relatorio_view import _construir_dados_relatorio
 from ..services.report_editing import carregar_todas_sheets
@@ -71,7 +72,12 @@ def visualizar_relatorio():
     execucao = db_service.obter_execucao(execucoes[0]["id"])
     dados = _construir_dados_relatorio(execucao["itens"]) if execucao else {}
 
-    return render_template("relatorio.html", dados=dados, execucao=execucao)
+    return render_template(
+        "relatorio.html",
+        dados=dados,
+        execucao=execucao,
+        dados_invertexto=invertexto.obter_config_publica(),
+    )
 
 
 def _visualizar_relatorio_excel_completo():
@@ -114,7 +120,12 @@ def _visualizar_relatorio_excel_completo():
             flash("Nenhum dado válido encontrado no relatório.", "warning")
             return redirect(url_for("index"))
 
-        return render_template("relatorio.html", dados=dados, execucao=None)
+        return render_template(
+            "relatorio.html",
+            dados=dados,
+            execucao=None,
+            dados_invertexto=invertexto.obter_config_publica(),
+        )
 
     except FileNotFoundError:
         flash("Arquivo de relatório não encontrado.", "danger")

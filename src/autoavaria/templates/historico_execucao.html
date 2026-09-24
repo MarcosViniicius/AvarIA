@@ -68,7 +68,9 @@ Histórico{% endblock %} {% block head %}
           </ul>
         </div>
         {% endif %}
-        <button class="btn btn-warning me-2" onclick="abrirModalUnificacao()" title="Unificar itens desta execução">
+        <!-- Abre o modal unificado (js/unificacao-modal.js); o seletor
+             data-unif-abrir evita onclick inline, que roda no escopo global. -->
+        <button class="btn btn-warning me-2" data-unif-abrir title="Unificar itens desta execução">
           <i class="bi bi-funnel"></i> Unificar
         </button>
         <div class="btn-group me-2" role="group">
@@ -421,102 +423,7 @@ Histórico{% endblock %} {% block head %}
   </div>
 </div>
 
-<!-- Modal de Unificação (escopada a esta execução) -->
-<div class="modal fade" id="unificacaoModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-funnel me-2"></i>Unificar Itens da Execução</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" id="btnFecharUnificacao"></button>
-      </div>
-      <div class="modal-body">
-        <div id="unificacaoExplicacao">
-          <p class="text-muted">
-            Consolida os itens de Avarias e Uso Interno <strong>desta execução</strong>, agrupando produtos
-            equivalentes e somando quantidades.
-          </p>
-          <div class="mb-3">
-            <label class="form-label fw-bold">Formato de Exportação:</label>
-            <div class="btn-group w-100" role="group">
-              <input type="radio" class="btn-check" name="formatoUnificacaoExecucao" id="formatoXlsxExec" value="xlsx" checked />
-              <label class="btn btn-outline-success" for="formatoXlsxExec">
-                <i class="bi bi-file-earmark-excel me-2"></i>Excel (.xlsx)
-              </label>
-              <input type="radio" class="btn-check" name="formatoUnificacaoExecucao" id="formatoTxtExec" value="txt" />
-              <label class="btn btn-outline-primary" for="formatoTxtExec">
-                <i class="bi bi-file-earmark-text me-2"></i>Texto (.txt)
-              </label>
-            </div>
-          </div>
-        </div>
-        <div id="unificacaoProcessando" class="d-none text-center">
-          <div class="spinner-border text-warning" role="status"></div>
-          <p class="mt-2 mb-0">Processando unificação...</p>
-        </div>
-        <div id="unificacaoResultado" class="d-none">
-          <div class="alert alert-success mb-0">
-            <p id="unificacaoResultadoMensagem" class="mb-3"></p>
-            <a id="btnDownloadUnificadoExec" class="btn btn-success w-100" href="#">
-              <i class="bi bi-download me-2"></i>Baixar Relatório Unificado
-            </a>
-            <button type="button" class="btn btn-outline-primary w-100 mt-2" id="btnEnviarInvertexto">
-              <i class="bi bi-send me-2"></i>Enviar para o invertexto
-            </button>
-          </div>
-
-          <!-- Confirmação persistente do envio: fica visível no modal com o
-               link pronto, para o usuário não depender de um alerta que some. -->
-          <div id="invertextoStatus" class="d-none mt-3">
-            <div class="alert alert-success mb-0">
-              <div class="d-flex align-items-start gap-2">
-                <i class="bi bi-check-circle-fill text-success mt-1"></i>
-                <div class="flex-grow-1 min-w-0">
-                  <strong id="invertextoStatusTitulo">Relatório publicado no invertexto</strong>
-                  <p class="mb-2 small" id="invertextoStatusDetalhe"></p>
-                  <div class="input-group input-group-sm">
-                    <input type="text" class="form-control" id="invertextoLink" readonly />
-                    <button type="button" class="btn btn-outline-secondary" id="btnCopiarLinkInvertexto"
-                            title="Copiar link">
-                      <i class="bi bi-clipboard"></i>
-                    </button>
-                    <a class="btn btn-primary" id="btnAbrirInvertexto" href="#" target="_blank" rel="noopener">
-                      <i class="bi bi-box-arrow-up-right me-1"></i>Abrir
-                    </a>
-                  </div>
-                  <p class="mb-0 mt-2 text-muted" style="font-size: 0.8rem;">
-                    <i class="bi bi-info-circle me-1"></i>Qualquer pessoa com este link pode ler o relatório.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="d-flex align-items-center gap-2 mb-2 mt-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExpandirUnificadoExec">
-              <i class="bi bi-eye me-1"></i>Expandir para visualizar
-            </button>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btnCopiarUnificadoExec">
-              <i class="bi bi-clipboard me-1"></i>Copiar
-            </button>
-          </div>
-          <div id="unificacaoAreaVistaPreviaExec" class="d-none">
-            <label class="form-label fw-bold small">Contenido unificado:</label>
-            <textarea id="unificacaoVistaPreviaExec" class="form-control" rows="10" readonly style="font-family: monospace; white-space: pre-wrap;"></textarea>
-          </div>
-        </div>
-        <div id="unificacaoErro" class="d-none">
-          <div class="alert alert-danger mb-0" id="unificacaoErroMensagem"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-        <button type="button" class="btn btn-warning" id="btnUnificarExec">
-          <i class="bi bi-funnel me-2"></i>Iniciar Unificação
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+{% include "_modal_unificacao.html" %}
 
 {% include "_modal_imagem.html" %}
 
@@ -524,10 +431,18 @@ Histórico{% endblock %} {% block head %}
 
 {% block scripts %}
 <script src="{{ static_v('js/relatorio.min.js') }}" defer></script>
-<!-- Id da execucao usado pelo modulo de acoes (historico-execucao.js) -->
-<script>window.RUN_ID = {{ execucao.id }};</script>
-<!-- URL do notepad do invertexto (destino do botao "Enviar para o invertexto") -->
-<script>window.INVERTEXTO_URL = {{ (dados_invertexto.url if dados_invertexto else 'https://www.invertexto.com/autoava') | tojson }};</script>
+<!-- Config do modal de unificacao: escopado a ESTA execucao (ver
+     js/unificacao-modal.js, modulo unico que serve esta tela e o Relatorio). -->
+<script>
+  window.UNIFICACAO = {
+    escopo: "execucao",
+    runId: {{ execucao.id }},
+    comSelecao: false,
+    invertextoUrl: {{ (dados_invertexto.url if dados_invertexto else 'https://www.invertexto.com/autoava') | tojson }},
+  };
+  window.RUN_ID = {{ execucao.id }};
+</script>
 <script src="{{ static_v('js/reanalise-selecao.js') }}" defer></script>
 <script src="{{ static_v('js/historico-execucao.js') }}" defer></script>
+<script src="{{ static_v('js/unificacao-modal.js') }}" defer></script>
 {% endblock %}
