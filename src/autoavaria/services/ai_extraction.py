@@ -83,10 +83,32 @@ def _extrair_json_da_resposta(resposta_texto: str) -> Dict[str, Any]:
     return json.loads(texto)
 
 
+def _nome_e_caminho(item) -> Tuple[str, str]:
+    """Normaliza um item do lote para (nome_original, caminho_fisico).
+
+    Aceita as duas formas:
+    - string: o caminho é o próprio arquivo e o nome de negócio é o basename
+      (formato legado, quando o nome físico ERA o nome original);
+    - tupla (nome_original, caminho_fisico): usada quando o nome físico é
+      opaco (acervo) e a identidade de negócio é o nome original.
+    """
+    if isinstance(item, (tuple, list)):
+        nome, caminho = item[0], item[1]
+        return str(nome), str(caminho)
+    caminho = str(item)
+    return os.path.basename(caminho), caminho
+
+
 def extrair_dados_de_lote(
-    lote_de_caminhos: List[str], provider: AIProvider, mensagens_por_imagem: Dict[str, str]
+    lote_de_caminhos: List, provider: AIProvider, mensagens_por_imagem: Dict[str, str]
 ) -> Tuple[Dict[str, Any], int]:
-    """Envia um lote de imagens e seu contexto de texto para o provedor de IA configurado."""
+    """Envia um lote de imagens e seu contexto de texto para o provedor de IA configurado.
+
+    `lote_de_caminhos` aceita strings (legado) ou pares
+    ``(nome_original, caminho_fisico)`` — ver `_nome_e_caminho`. O nome de
+    negócio (nome original) é o que aparece no prompt e o que chaveia o
+    resultado e o contexto da conversa; o caminho é só de onde ler os bytes.
+    """
     if not lote_de_caminhos:
         return {}, 0
 
@@ -94,8 +116,8 @@ def extrair_dados_de_lote(
     nomes_validos = []
     resultados: Dict[str, Any] = {}
 
-    for caminho in lote_de_caminhos:
-        nome_arquivo = os.path.basename(caminho)
+    for item in lote_de_caminhos:
+        nome_arquivo, caminho = _nome_e_caminho(item)
         try:
             # Só valida que o arquivo abre como imagem — a codificação real
             # (PIL/base64/etc.) é feita dentro de cada provedor.

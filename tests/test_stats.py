@@ -9,7 +9,7 @@ mostrava processadas > total - um número sem sentido.
 from autoavaria.services import stats
 
 
-def test_processadas_nunca_excede_total(tmp_path, monkeypatch):
+def test_processadas_nunca_excede_total(tmp_path, monkeypatch, tmp_db):
     pasta = tmp_path / "imagens"
     pasta.mkdir()
     # só 1 imagem na pasta agora...
@@ -36,7 +36,7 @@ def test_processadas_nunca_excede_total(tmp_path, monkeypatch):
     assert resultado["imagens_pendentes"] == 0
 
 
-def test_pendentes_conta_so_o_que_nao_esta_no_log(tmp_path, monkeypatch):
+def test_pendentes_conta_so_o_que_nao_esta_no_log(tmp_path, monkeypatch, tmp_db):
     pasta = tmp_path / "imagens"
     pasta.mkdir()
     (pasta / "IMG-1.jpg").write_bytes(b"x")
@@ -57,7 +57,7 @@ def test_pendentes_conta_so_o_que_nao_esta_no_log(tmp_path, monkeypatch):
     assert resultado["imagens_pendentes"] == 1
 
 
-def test_sem_pasta_nem_log_devolve_zeros(tmp_path, monkeypatch):
+def test_sem_pasta_nem_log_devolve_zeros(tmp_path, monkeypatch, tmp_db):
     monkeypatch.setattr(stats, "DIRETORIO_IMAGENS", str(tmp_path / "nao_existe"))
     monkeypatch.setattr(stats, "ARCHIVE_FOLDER", str(tmp_path / "arquivadas"))
     monkeypatch.setattr(stats, "LOG_PROCESSADOS_FILE", str(tmp_path / "nao_existe.txt"))
@@ -70,7 +70,7 @@ def test_sem_pasta_nem_log_devolve_zeros(tmp_path, monkeypatch):
     assert resultado["imagens_pendentes"] == 0
 
 
-def test_conta_imagens_arquivadas_como_processadas(tmp_path, monkeypatch):
+def test_conta_imagens_arquivadas_como_processadas(tmp_path, monkeypatch, tmp_db):
     pendentes = tmp_path / "imagens"
     arquivadas = tmp_path / "arquivadas"
     pendentes.mkdir()

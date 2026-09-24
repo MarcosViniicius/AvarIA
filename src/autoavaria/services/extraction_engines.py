@@ -101,10 +101,27 @@ class MotorExtracao(ABC):
     @abstractmethod
     def processar_lote(
         self,
-        lote_de_caminhos: List[str],
+        lote_de_caminhos: List,
         contextos: Dict[str, ContextoImagem],
     ) -> Tuple[Dict[str, Any], int]:
-        """Processa um lote e devolve (resultados, tokens_consumidos)."""
+        """Processa um lote e devolve (resultados, tokens_consumidos).
+
+        Cada item do lote é um par ``(nome_original, caminho_fisico)`` ou uma
+        string (legado) — ver `_nome_e_caminho`. O resultado é chaveado pelo
+        nome original, que é a identidade de negócio da imagem.
+        """
+
+
+def _nome_e_caminho(item) -> Tuple[str, str]:
+    """Normaliza um item do lote para (nome_original, caminho_fisico).
+
+    Aceita par (nome, caminho) — usado quando o arquivo está no acervo e o nome
+    físico é opaco — ou string (legado), caso em que o basename é a identidade.
+    """
+    if isinstance(item, (tuple, list)):
+        return str(item[0]), str(item[1])
+    caminho = str(item)
+    return os.path.basename(caminho), caminho
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +161,8 @@ class MotorCodigoBarras(MotorExtracao):
 
     def processar_lote(self, lote_de_caminhos, contextos):
         resultados: Dict[str, Any] = {}
-        for caminho in lote_de_caminhos:
-            nome_arquivo = os.path.basename(caminho)
+        for item in lote_de_caminhos:
+            nome_arquivo, caminho = _nome_e_caminho(item)
             resultados[nome_arquivo] = self.processar_imagem(
                 caminho, contextos.get(nome_arquivo)
             )
@@ -283,15 +300,15 @@ class MotorHibrido(MotorExtracao):
 
     def processar_lote(self, lote_de_caminhos, contextos):
         resultados: Dict[str, Any] = {}
-        pendentes: List[str] = []
+        pendentes: List = []
 
-        for caminho in lote_de_caminhos:
-            nome_arquivo = os.path.basename(caminho)
+        for item in lote_de_caminhos:
+            nome_arquivo, caminho = _nome_e_caminho(item)
             resultado = self.motor_barras.processar_imagem(
                 caminho, contextos.get(nome_arquivo)
             )
             if self._precisa_de_ia(resultado):
-                pendentes.append(caminho)
+                pendentes.append((nome_arquivo, caminho))
             else:
                 resultados[nome_arquivo] = resultado
 

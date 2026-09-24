@@ -28,6 +28,34 @@ ARCHIVE_FOLDER = str(ARCHIVE_FOLDER_PATH)
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
 
 
+def _nomes_do_acervo():
+    """(nomes_pendentes, nomes_arquivados) do acervo, ou (None, None) sem uso.
+
+    Devolve None quando o acervo ainda não tem registros, sinalizando a quem
+    chamou que deve varrer o disco (instalação não migrada). O nome devolvido é
+    o ORIGINAL, que é a identidade exibida e comparada com o log.
+    """
+    try:
+        from . import arquivos as acervo
+
+        registros = acervo.listar()
+        if not registros:
+            return None, None
+        pendentes = {
+            r["nome_original"] for r in registros
+            if r["pasta"] == acervo.PASTA_PENDENTES
+            and r["nome_original"].lower().endswith(EXTENSOES_IMAGEM)
+        }
+        arquivados = {
+            r["nome_original"] for r in registros
+            if r["pasta"] == acervo.PASTA_ARQUIVADAS
+            and r["nome_original"].lower().endswith(EXTENSOES_IMAGEM)
+        }
+        return pendentes, arquivados
+    except Exception:
+        return None, None
+
+
 def carregar_logs_processados():
     """Carrega os logs de arquivos já processados."""
     if not os.path.exists(LOG_PROCESSADOS_FILE):
@@ -66,26 +94,35 @@ def obter_estatisticas():
         # Imagens presentes tanto nas pendentes quanto no arquivo permanente.
         # O pipeline move para ARCHIVE_FOLDER cada imagem analisada com sucesso;
         # olhar só UPLOAD_FOLDER fazia o Dashboard mostrar zero processadas.
-        imagens_pendentes_na_pasta = []
-        if os.path.exists(DIRETORIO_IMAGENS):
-            imagens_pendentes_na_pasta = [
-                f for f in os.listdir(DIRETORIO_IMAGENS) if f.lower().endswith(EXTENSOES_IMAGEM)
-            ]
-        imagens_arquivadas = []
-        if os.path.exists(ARCHIVE_FOLDER):
-            imagens_arquivadas = [
-                f for f in os.listdir(ARCHIVE_FOLDER) if f.lower().endswith(EXTENSOES_IMAGEM)
-            ]
-        imagens_conhecidas = set(imagens_pendentes_na_pasta) | set(imagens_arquivadas)
+        #
+        # Fonte: o acervo (services/arquivos.py), onde o nome FÍSICO pode ser
+        # opaco; a identidade é o nome original. Cai para a varredura de disco
+        # quando não há registros (instalação que ainda não migrou).
+        nomes_pendentes, nomes_arquivados = _nomes_do_acervo()
+        if nomes_pendentes is None:
+            imagens_pendentes_na_pasta = []
+            if os.path.exists(DIRETORIO_IMAGENS):
+                imagens_pendentes_na_pasta = [
+                    f for f in os.listdir(DIRETORIO_IMAGENS) if f.lower().endswith(EXTENSOES_IMAGEM)
+                ]
+            imagens_arquivadas = []
+            if os.path.exists(ARCHIVE_FOLDER):
+                imagens_arquivadas = [
+                    f for f in os.listdir(ARCHIVE_FOLDER) if f.lower().endswith(EXTENSOES_IMAGEM)
+                ]
+            nomes_pendentes, nomes_arquivados = set(imagens_pendentes_na_pasta), set(imagens_arquivadas)
+
+        imagens_conhecidas = set(nomes_pendentes) | set(nomes_arquivados)
         stats["imagens_total"] = len(imagens_conhecidas)
 
         # Não contar nomes antigos do log cujos arquivos já foram removidos.
         processadas_no_log = carregar_logs_processados()
         stats["imagens_processadas"] = sum(
-            1 for f in imagens_conhecidas if f in processadas_no_log or f in imagens_arquivadas
+            1 for f in imagens_conhecidas
+            if f in processadas_no_log or f in nomes_arquivados
         )
         stats["imagens_pendentes"] = sum(
-            1 for f in imagens_pendentes_na_pasta if f not in processadas_no_log
+            1 for f in nomes_pendentes if f not in processadas_no_log
         )
 
         # Último processamento - cache por arquivo

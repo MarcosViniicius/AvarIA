@@ -57,6 +57,18 @@ def _resposta_ok(nomes):
     return json.dumps({n: {"tipo": "Avaria", "itens": [{"produto": "TOMATE", "peso": "1kg"}]} for n in nomes})
 
 
+def _nome_do_item(item):
+    """Nome de negócio de um item do lote.
+
+    O pipeline manda pares (nome_original, caminho_fisico) — o nome físico pode
+    ser opaco (acervo). Aceitar string mantém os mocks compatíveis com a forma
+    legada (nome == caminho).
+    """
+    if isinstance(item, (tuple, list)):
+        return item[0]
+    return str(item).replace("\\", "/").split("/")[-1]
+
+
 def _imagens_com_dado_no_excel(caminho_excel) -> set:
     """Nomes de arquivo que realmente têm alguma linha salva no relatório."""
     import os
@@ -86,7 +98,7 @@ class TestLogSoDepoisDeGravar:
 
         def fake_extrair(lote, provider, mensagens):
             chamadas["n"] += 1
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             if chamadas["n"] == 1:
                 return json.loads(_resposta_ok(nomes)), 100
             raise KeyboardInterrupt("processo morto no meio do 2º lote")
@@ -108,7 +120,7 @@ class TestLogSoDepoisDeGravar:
 
     def test_falha_de_excel_nao_marca_imagens_como_processadas(self, ambiente_isolado, monkeypatch):
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 10
 
         def falhar_ao_salvar(*args, **kwargs):
@@ -124,7 +136,7 @@ class TestLogSoDepoisDeGravar:
 
     def test_callback_de_progresso_reflete_imagens_concluidas(self, ambiente_isolado, monkeypatch):
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -137,7 +149,7 @@ class TestLogSoDepoisDeGravar:
 
     def test_cancelamento_persiste_o_lote_que_ja_terminou(self, ambiente_isolado, monkeypatch):
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 10
 
         chamadas_cancelamento = iter([True])
@@ -158,7 +170,7 @@ class TestLogSoDepoisDeGravar:
         ordem = []
 
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 100
 
         salvar_original = pipeline.salvar_relatorio_excel
@@ -195,7 +207,7 @@ class TestLogSoDepoisDeGravar:
 
     def test_execucao_completa_marca_todas_as_imagens(self, ambiente_isolado, monkeypatch):
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 100
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -240,7 +252,7 @@ class TestArquivamentoDeImagensProcessadas:
         self, ambiente_isolado, monkeypatch
     ):
         def fake_extrair(lote, provider, mensagens):
-            nomes = [p.split("\\")[-1].split("/")[-1] for p in lote]
+            nomes = [_nome_do_item(p) for p in lote]
             return json.loads(_resposta_ok(nomes)), 100
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -257,7 +269,7 @@ class TestArquivamentoDeImagensProcessadas:
             # Sempre devolve erro para IMG-1, sucesso para as demais.
             resultado = {}
             for p in lote:
-                nome = p.split("\\")[-1].split("/")[-1]
+                nome = _nome_do_item(p)
                 if nome == "IMG-1.jpg":
                     resultado[nome] = {"tipo": "Erro", "detalhes": "falha simulada"}
                 else:
@@ -527,7 +539,7 @@ class TestListarImagensPendentes:
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", tmp_path / "log.txt")
         assert pipeline.listar_imagens_pendentes(str(tmp_path / "nao_existe")) == []
 
-    def test_usa_upload_folder_por_padrao(self, tmp_path, monkeypatch):
+    def test_usa_upload_folder_por_padrao(self, tmp_path, monkeypatch, tmp_db):
         pasta = tmp_path / "imagens"
         pasta.mkdir()
         (pasta / "IMG-1.jpg").write_bytes(b"x")
@@ -585,7 +597,7 @@ class TestReanalisarExecucao:
         import os
 
         def fake_extrair(lote, provider, mensagens):
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "TOMATE REANALISADO", "peso": "1kg"}]}}, 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -600,7 +612,7 @@ class TestReanalisarExecucao:
         import os
 
         def fake_extrair(lote, provider, mensagens):
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": f"{nome}-REANALISADO", "peso": "1kg"}]}}, 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -619,7 +631,7 @@ class TestReanalisarExecucao:
         (execucao_existente["arquivadas"] / "IMG-1.jpg").unlink()
 
         def fake_extrair(lote, provider, mensagens):
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "OK", "peso": "1kg"}]}}, 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -634,7 +646,7 @@ class TestReanalisarExecucao:
         import os
 
         def fake_extrair(lote, provider, mensagens):
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "OK", "peso": "1kg"}]}}, 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -694,9 +706,10 @@ class TestReanalisarExecucao:
         chamadas_por_caminho = {}
 
         def fake_extrair(lote, provider, mensagens):
-            for caminho in lote:
+            for item in lote:
+                caminho = item[1] if isinstance(item, (tuple, list)) else item
                 chamadas_por_caminho[caminho] = chamadas_por_caminho.get(caminho, 0) + 1
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "PALETE-REANALISADO", "peso": "2kg"}]}}, 10
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -745,7 +758,7 @@ class TestReanalisarExecucao:
 
         def fake_extrair(lote, provider, mensagens):
             caminhos_analisados.extend(lote)
-            nome = os.path.basename(lote[0])
+            nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
             return {nome: {"tipo": "Avaria", "itens": [{"produto": "TOMATE NOVO", "peso": "1kg"}]}}, 1
 
         monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
@@ -753,4 +766,9 @@ class TestReanalisarExecucao:
 
         assert resultado["sucesso"] is True
         assert resultado["erros"] == 0
-        assert caminhos_analisados == [str(arquivadas / "IMG-arquivada.jpg")]
+        # O pipeline manda pares (nome_original, caminho_fisico); a resolução
+        # antiga deve ter encontrado a imagem na pasta de arquivadas.
+        caminhos = [
+            c[1] if isinstance(c, (tuple, list)) else c for c in caminhos_analisados
+        ]
+        assert caminhos == [str(arquivadas / "IMG-arquivada.jpg")]

@@ -8,8 +8,10 @@ from werkzeug.utils import secure_filename
 from .blueprint import web_bp as app
 from .context import ARCHIVE_FOLDER, UPLOAD_FOLDER
 from .processing import allowed_file
+from ..services import arquivos
 from ..services.config_service import verificar_e_corrigir_configuracao
-from ..services.extraction import nome_para_gravar
+
+MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 
 
 @app.route("/upload")
@@ -37,44 +39,43 @@ def upload_files():
         forcar = request.form.get("forcar_reprocessamento") == "true"
 
         uploaded_files = []
-        renomeados = []
+        registrados = []
         ignorados_duplicados = []
         for file in files:
             if file and allowed_file(file.filename):
                 filename_original = secure_filename(file.filename)
                 dados = file.read()
-                filename = nome_para_gravar([upload_dir, ARCHIVE_FOLDER], filename_original, dados, forcar=forcar)
 
-                if filename is None:
-                    # Conteúdo idêntico a um arquivo já existente - reenviar o
-                    # mesmo lote pra testar não deve duplicar a imagem nem a
-                    # linha dela no relatório.
+                # Acervo: nome físico aleatório (nunca colide) + metadados no
+                # banco. O hash do CONTEÚDO ORIGINAL é a chave de dedup -
+                # reenviar o mesmo lote não duplica nem reprocessa, mesmo que a
+                # cópia em disco tenha sido recomprimida ao ser arquivada.
+                # `forcar` registra mesmo o conteúdo idêntico (o usuário pediu),
+                # criando um físico novo para não confundir a fila.
+                registro = arquivos.registrar(
+                    filename_original, dados=dados, forcar=forcar,
+                )
+
+                if registro is None:
                     ignorados_duplicados.append(filename_original)
                     continue
 
-                if filename != filename_original:
-                    renomeados.append({"original": filename_original, "salvo_como": filename})
-
-                filepath = os.path.join(upload_dir, filename)
-                with open(filepath, "wb") as f:
-                    f.write(dados)
-                uploaded_files.append(filename)
+                uploaded_files.append(filename_original)
+                registrados.append({
+                    "nome_original": filename_original,
+                    "nome_fisico": registro["nome_fisico"],
+                })
 
         mensagem = f"{len(uploaded_files)} arquivo(s) enviado(s) com sucesso!"
-        if renomeados:
-            mensagem += (
-                f" {len(renomeados)} já existiam com esse nome (mas com conteúdo diferente) "
-                "e foram salvos com um sufixo para não sobrescrever o arquivo anterior."
-            )
         if ignorados_duplicados:
-            mensagem += f" {len(ignorados_duplicados)} eram idênticos a arquivos já enviados e não foram duplicados."
+            mensagem += f" {len(ignorados_duplicados)} já haviam sido enviados (conteúdo idêntico) e não foram duplicados."
 
         return jsonify(
             {
                 "success": True,
                 "message": mensagem,
                 "files": uploaded_files,
-                "renomeados": renomeados,
+                "registrados": registrados,
                 "ignorados_duplicados": ignorados_duplicados,
             }
         )

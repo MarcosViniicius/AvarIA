@@ -32,7 +32,13 @@ def arquivar_imagem(
     """Move `nome_arquivo` de `pasta_origem` para `pasta_destino` (padrão
     ARCHIVE_FOLDER), recomprimindo para reduzir espaço em disco.
 
-    - .jpg/.jpeg: reduz dimensão (máx. 1600px no maior lado) e qualidade.
+    `nome_arquivo` é o NOME ORIGINAL (identidade de negócio). Quando o arquivo
+    está no acervo (services/arquivos.py), o nome físico pode ser opaco: aqui
+    resolvemos o registro e movemos pelo acervo, que mantém o vínculo entre o
+    nome original e o arquivo físico. Sem registro, cai no comportamento
+    legado (nome == arquivo em disco).
+
+    - .jpg/.jpeg: reduz dimensão (max. 1600px no maior lado) e qualidade.
     - .png: só reotimiza (optimize=True), sem redimensionar nem trocar formato.
 
     Se a recompressão falhar por qualquer motivo (imagem corrompida, modo não
@@ -46,6 +52,17 @@ def arquivar_imagem(
     arquivar (arquivo de origem inexistente) ou se a gravação no destino
     falhou (nesse caso o original é mantido intocado).
     """
+    try:
+        from . import arquivos as acervo
+
+        for registro in acervo.buscar_por_nome_com_fallback(nome_arquivo):
+            if registro["pasta"] == acervo.PASTA_PENDENTES:
+                origem_acervo = Path(acervo.caminho_de(registro))
+                if origem_acervo.exists():
+                    return _arquivar_no_acervo(acervo, registro, origem_acervo)
+    except Exception as e:
+        logger.warning(f"⚠️ Acervo indisponível para '{nome_arquivo}', usando disco: {e}")
+
     origem = Path(pasta_origem) / nome_arquivo
     if not origem.exists():
         return False
@@ -81,6 +98,46 @@ def arquivar_imagem(
         # uma cópia extra para trás, não é um estado inconsistente.
         logger.warning(f"⚠️ Não foi possível remover o original '{nome_arquivo}' após arquivar: {e}")
 
+    return True
+
+
+def _arquivar_no_acervo(acervo, registro: dict, origem: Path) -> bool:
+    """Arquiva um arquivo do acervo: recomprime e move, preservando o vínculo.
+
+    O física mantém o nome opaco; quem muda é a pasta lógica ('arquivadas').
+    Só atualiza o metadado depois que o arquivo existe no destino.
+    """
+    destino_dir = Path(acervo.ARCHIVE_FOLDER)
+    destino_dir.mkdir(parents=True, exist_ok=True)
+    destino = destino_dir / registro["nome_fisico"]
+    destino_tmp = destino.with_name(destino.name + ".tmp")
+
+    try:
+        _recomprimir(origem, destino_tmp)
+    except Exception as e:
+        logger.warning(f"⚠️ Falha ao recomprimir '{registro['nome_original']}', arquivando sem recompressão: {e}")
+        try:
+            _copiar_sem_alterar(origem, destino_tmp)
+        except Exception as e2:
+            logger.error(f"❌ Falha ao arquivar '{registro['nome_original']}': {e2}")
+            _remover_silenciosamente(destino_tmp)
+            return False
+
+    try:
+        os.replace(destino_tmp, destino)
+    except OSError as e:
+        logger.error(f"❌ Falha ao mover '{registro['nome_original']}' para o destino: {e}")
+        _remover_silenciosamente(destino_tmp)
+        return False
+
+    # Metadado depois do arquivo estar no lugar (grava-antes-de-marcar).
+    acervo.mover(registro["id"], acervo.PASTA_ARQUIVADAS)
+
+    if origem != destino and origem.exists():
+        try:
+            os.remove(origem)
+        except OSError:
+            pass
     return True
 
 

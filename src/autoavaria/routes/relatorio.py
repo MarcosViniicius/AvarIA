@@ -27,6 +27,31 @@ from ..services.relatorio_view import _construir_dados_relatorio
 from ..services.report_editing import carregar_todas_sheets
 
 
+def _resolver_imagem(nome_original: str):
+    """Caminho físico de uma imagem a partir do nome original (ou None).
+
+    O acervo (services/arquivos.py) é a fonte primária: o nome físico pode ser
+    opaco, e há fallback para o nome-base (referências antigas a `IMG-x_2.jpg`,
+    cujo conteúdo idêntico foi consolidado em `IMG-x.jpg`). Sem registro, cai
+    para as pastas oficiais — mantém funcionando acervo ainda não migrado.
+    """
+    try:
+        from ..services import arquivos as acervo
+
+        for registro in acervo.buscar_por_nome_com_fallback(nome_original):
+            caminho = acervo.caminho_de(registro)
+            if os.path.isfile(caminho):
+                return caminho
+    except Exception as e:
+        print(f"⚠️ Acervo indisponível para '{nome_original}': {e}")
+
+    for pasta in (DIRETORIO_IMAGENS, ARCHIVE_FOLDER):
+        candidato = os.path.join(str(pasta), nome_original)
+        if os.path.exists(candidato):
+            return candidato
+    return None
+
+
 @app.route("/relatorio")
 @app.route("/visualizar_relatorio")
 def visualizar_relatorio():
@@ -286,16 +311,20 @@ def download_relatorio_txt():
 
 @app.route("/imagem/<path:filename>")
 def servir_imagem(filename):
-    """Serve imagens do diretório de imagens com cache otimizado."""
-    try:
-        # Verificar se o arquivo existe e é uma imagem - pode estar na pasta de
-        # pendentes (ainda não processada/com erro) ou já arquivada (processada
-        # com sucesso, movida para fora da pasta de pendentes).
-        caminho_completo = os.path.join(DIRETORIO_IMAGENS, filename)
-        if not os.path.exists(caminho_completo):
-            caminho_completo = os.path.join(ARCHIVE_FOLDER, filename)
+    """Serve imagens do diretório de imagens com cache otimizado.
 
-        if not os.path.exists(caminho_completo):
+    `filename` é o NOME ORIGINAL (identidade de negócio). O arquivo físico pode
+    ser opaco quando veio do acervo (services/arquivos.py), então a resolução
+    passa pelo acervo primeiro e cai para o disco (legado) depois.
+    """
+    try:
+        # Resolução única: acervo por nome original (com fallback para o
+        # nome-base, cobrindo referências antigas a `IMG-x_2.jpg`), e depois
+        # as pastas oficiais — pode estar em pendentes (com erro/nova) ou em
+        # arquivadas (processada com sucesso).
+        caminho_completo = _resolver_imagem(filename)
+
+        if not caminho_completo:
             return jsonify({"error": "Imagem não encontrada"}), 404
 
         # Verificar se é realmente uma imagem

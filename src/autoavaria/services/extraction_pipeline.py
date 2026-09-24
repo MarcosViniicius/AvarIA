@@ -165,24 +165,101 @@ def carregar_logs() -> set:
 
 
 def listar_imagens_pendentes(diretorio_imagens: Optional[str] = None) -> list:
-    """Lista, em ordem, os arquivos de imagem de `diretorio_imagens` que ainda
-    não estão em log_mestre.txt.
+    """Lista, em ordem, os NOMES ORIGINAIS das imagens ainda não processadas.
 
-    Fonte única desta verificação — antes existiam duas implementações
-    quase idênticas (uma aqui, outra em routes/processing.py), e a de lá
-    comparava nome de arquivo contra a LINHA INTEIRA do log (incluindo o
-    timestamp), o que nunca dava match e fazia aquele contador de "novas
-    imagens" mentir. Consolidado para as duas nunca mais divergirem.
+    O nome original é a identidade da imagem em todo o sistema (conversa.txt,
+    Excel, log_mestre.txt, UI) — o nome FÍSICO pode ser aleatório quando o
+    arquivo veio do acervo (ver services/arquivos.py).
+
+    Fontes, nesta ordem:
+    1. **Acervo** (arquivos com metadados no banco, pasta 'pendentes'): devolve
+       `nome_original`, ignorando o que já está em log_mestre.txt.
+    2. **Disco sem registro** (legado): arquivos soltos na pasta que ainda não
+       estão no acervo nem no log. Cobre o acervo antigo e o upload por ZIP
+       antes da migração.
+
+    Fonte única desta verificação — antes existiam duas implementações quase
+    idênticas (uma aqui, outra em routes/processing.py), e a de lá comparava
+    nome de arquivo contra a LINHA INTEIRA do log (incluindo o timestamp), o
+    que nunca dava match e fazia aquele contador de "novas imagens" mentir.
     """
     diretorio_imagens = diretorio_imagens or str(UPLOAD_FOLDER)
     if not os.path.isdir(diretorio_imagens):
         return []
     processadas = carregar_logs()
-    return sorted(
-        f
-        for f in os.listdir(diretorio_imagens)
-        if f.lower().endswith(EXTENSOES_IMAGEM) and f not in processadas
+    pendentes: set = set()
+
+    # O acervo é global (não tem coluna de diretório), então só entra quando
+    # estamos varrendo a pasta OFICIAL de pendentes. Varrer outro diretório
+    # (teste, pasta alternativa) é pedido explícito para olhar SÓ ali.
+    # Compara com `globals()["UPLOAD_FOLDER"]` para respeitar monkeypatch.
+    usar_acervo = os.path.abspath(diretorio_imagens) == os.path.abspath(str(globals()["UPLOAD_FOLDER"]))
+
+    # 1. Acervo: nome físico opaco -> nome original, resolvido pelo banco.
+    if usar_acervo:
+        try:
+            from . import arquivos as acervo
+
+            for registro in acervo.listar(acervo.PASTA_PENDENTES):
+                nome = registro["nome_original"]
+                if nome.lower().endswith(EXTENSOES_IMAGEM) and nome not in processadas:
+                    pendentes.add(nome)
+        except Exception as e:
+            print(f"⚠️ Acervo indisponível, usando só o disco: {e}")
+
+    # 2. Disco: arquivos soltos que ainda não estão no acervo nem no log.
+    #    Só nomes que NÃO pertencem ao acervo: um arquivo migrado tem nome
+    #    físico opaco e já foi contado no passo 1 pelo nome original — incluí-lo
+    #    aqui duplicaria e ainda vazaria o nome físico para o pipeline.
+    try:
+        nomes_fisicos_acervo = set()
+        if usar_acervo:
+            try:
+                from . import arquivos as acervo
+
+                nomes_fisicos_acervo = {
+                    r["nome_fisico"]
+                    for r in acervo.listar(acervo.PASTA_PENDENTES)
+                }
+            except Exception:
+                pass
+
+        for f in os.listdir(diretorio_imagens):
+            if not f.lower().endswith(EXTENSOES_IMAGEM):
+                continue
+            if f in processadas or f in pendentes or f in nomes_fisicos_acervo:
+                continue
+            pendentes.add(f)
+    except OSError:
+        pass
+
+    return sorted(pendentes)
+
+
+def caminho_fisico_pendente(nome_original: str, diretorio_imagens: Optional[str] = None) -> Optional[str]:
+    """Caminho físico de uma imagem pendente a partir do nome original.
+
+    Resolve pelo acervo primeiro (nome físico aleatório) e cai para o nome no
+    disco (legado) — é o que o pipeline usa para mandar a imagem à IA.
+    """
+    diretorio_imagens = diretorio_imagens or str(UPLOAD_FOLDER)
+    usar_acervo = (
+        os.path.abspath(diretorio_imagens) == os.path.abspath(str(globals()["UPLOAD_FOLDER"]))
     )
+    if usar_acervo:
+        try:
+            from . import arquivos as acervo
+
+            for registro in acervo.buscar_por_nome_com_fallback(nome_original):
+                if registro["pasta"] == acervo.PASTA_PENDENTES:
+                    candidato = acervo.caminho_de(registro)
+                    if os.path.isfile(candidato):
+                        return candidato
+        except Exception:
+            pass
+
+    candidato = os.path.join(diretorio_imagens, nome_original)
+    return candidato if os.path.isfile(candidato) else None
 
 
 def registrar_log(nome_arquivo: str) -> None:
@@ -226,9 +303,15 @@ def _linha_de_erro(nome_arquivo: str, detalhe: str, mensagens_por_imagem: Dict[s
 def _resolver_caminho_imagem(caminho_registrado: str) -> Optional[str]:
     """Resolve o caminho histórico de uma imagem pendente ou arquivada.
 
-    Execuções antigas registram o caminho da pasta de pendentes, embora a
-    imagem seja movida para ARCHIVE_FOLDER ao concluir. Preferimos o caminho
-    gravado e, se ele não existir, procuramos pelo nome nas pastas oficiais.
+    Aceita as duas eras de dados:
+    - **Acervo (atual):** o nome físico é aleatório (uuid) e a referência
+      gravada é o nome ORIGINAL. O acervo diz onde o arquivo está agora.
+    - **Legado:** o caminho gravado era o caminho real do arquivo em disco,
+      que podia estar na pasta de pendentes mesmo depois de arquivado.
+
+    Ordem: caminho gravado (se ainda existir) -> acervo por nome original ->
+    busca por nome nas pastas oficiais. Assim uma execução antiga continua
+    abrindo mesmo depois de o arquivo ser movido ou renomeado.
     """
     if not caminho_registrado:
         return None
@@ -237,6 +320,18 @@ def _resolver_caminho_imagem(caminho_registrado: str) -> Optional[str]:
         return caminho_registrado
 
     nome = os.path.basename(caminho_registrado)
+    # Acervo: resolve pelo nome original (o nome físico é opaco).
+    try:
+        from . import arquivos as acervo
+
+        for registro in acervo.buscar_por_nome_com_fallback(nome):
+            candidato = acervo.caminho_de(registro)
+            if os.path.isfile(candidato):
+                return candidato
+    except Exception:
+        # Acervo indisponível não pode derrubar a resolução: cai no legado.
+        pass
+
     for pasta in (UPLOAD_FOLDER, ARCHIVE_FOLDER):
         candidato = os.path.abspath(os.path.join(str(pasta), nome))
         if os.path.isfile(candidato):
@@ -332,9 +427,18 @@ def main(
         print(f"⚙️  Motor de extração ativo: {motor.nome}\n")
 
         diretorio_imagens = str(UPLOAD_FOLDER)
+        # Mapa nome_original -> caminho FÍSICO. O nome original é a identidade
+        # em todo o fluxo (conversa, Excel, log); o físico pode ser opaco
+        # quando o arquivo veio do acervo. Manter o mapa explícito evita que o
+        # nome aleatório vaze para as chaves de resultado.
+        nomes_pendentes = listar_imagens_pendentes(diretorio_imagens)
+        mapa_caminhos = {
+            nome: caminho_fisico_pendente(nome, diretorio_imagens)
+            for nome in nomes_pendentes
+        }
+        mapa_caminhos = {n: c for n, c in mapa_caminhos.items() if c}
         imagens_para_processar = [
-            os.path.join(diretorio_imagens, f)
-            for f in listar_imagens_pendentes(diretorio_imagens)
+            (nome, mapa_caminhos[nome]) for nome in nomes_pendentes if nome in mapa_caminhos
         ]
 
         if not imagens_para_processar:
@@ -368,14 +472,17 @@ def main(
             for idx, lote in enumerate(lotes_de_imagens):
                 if idx > 0 and requer_ia:
                     time.sleep(request_delay)
+                # O motor recebe pares (nome_original, caminho_fisico): o nome
+                # identifica a imagem no resultado/conversa/prompt, o caminho
+                # é de onde ler os bytes (pode ser um nome físico opaco).
                 future_to_lote[executor.submit(motor.processar_lote, lote, contextos)] = lote
 
             with tqdm(total=len(imagens_para_processar), desc="Analisando", unit="img") as pbar:
                 for future in concurrent.futures.as_completed(future_to_lote):
                     cancelamento_solicitado = verificar_cancelamento()
 
-                    lote_processado_caminhos = future_to_lote[future]
-                    lote_processado_nomes = [os.path.basename(p) for p in lote_processado_caminhos]
+                    lote_processado_pares = future_to_lote[future]
+                    lote_processado_nomes = [nome for nome, _caminho in lote_processado_pares]
 
                     # Resultados DESTE lote, isolados: eles são gravados em disco
                     # antes de o lote ser marcado como processado (ver abaixo).
@@ -525,10 +632,10 @@ def reanalisar_erros(
                 callback_progresso({"atual": idx, "total": len(arquivos_com_erro), "arquivo": nome_arquivo})
 
             print(f"\n[{idx}/{len(arquivos_com_erro)}] Reanalisando: {nome_arquivo}")
-            caminho_imagem = os.path.join(diretorio_imagens, nome_arquivo)
+            caminho_imagem = _resolver_caminho_imagem(os.path.join(diretorio_imagens, nome_arquivo))
 
-            if not os.path.exists(caminho_imagem):
-                print(f"   ⚠️ Arquivo não encontrado: {caminho_imagem}")
+            if not caminho_imagem:
+                print(f"   ⚠️ Arquivo não encontrado: {nome_arquivo}")
                 detalhes_resultado.append({"arquivo": nome_arquivo, "status": "falha", "motivo": "Arquivo não encontrado"})
                 erros_da_execucao.append(_linha_de_erro(
                     nome_arquivo, "Arquivo não encontrado", mensagens_por_imagem, diretorio_imagens
@@ -538,7 +645,7 @@ def reanalisar_erros(
                 continue
 
             try:
-                resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                resultado, tokens = ai_extraction.extrair_dados_de_lote([(nome_arquivo, caminho_imagem)], provider, mensagens_por_imagem)
                 tokens_totais += tokens
                 dados = resultado.get(nome_arquivo)
 
@@ -813,7 +920,7 @@ def reanalisar_execucao(
                 })
             else:
                 try:
-                    resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                    resultado, tokens = ai_extraction.extrair_dados_de_lote([(nome_arquivo, caminho_imagem)], provider, mensagens_por_imagem)
                     tokens_totais += tokens
                     ai_extraction.processar_resultado_arquivo(
                         nome_arquivo, resultado, mensagens_por_imagem, os.path.dirname(caminho_imagem),
@@ -955,7 +1062,7 @@ def reanalisar_selecao_mestre(
                 continue
 
             try:
-                resultado, tokens = ai_extraction.extrair_dados_de_lote([caminho_imagem], provider, mensagens_por_imagem)
+                resultado, tokens = ai_extraction.extrair_dados_de_lote([(nome_arquivo, caminho_imagem)], provider, mensagens_por_imagem)
                 tokens_totais += tokens
                 novas_avarias, novos_usos, novos_erros = [], [], []
                 ai_extraction.processar_resultado_arquivo(

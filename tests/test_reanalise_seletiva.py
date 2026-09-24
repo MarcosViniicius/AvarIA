@@ -59,7 +59,7 @@ def execucao_mista(tmp_path, monkeypatch, tmp_db):
     monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
 
     def fake_extrair(lote, provider, mensagens):
-        nome = os.path.basename(lote[0])
+        nome = lote[0][0] if isinstance(lote[0], (tuple, list)) else os.path.basename(lote[0])
         return {nome: {"tipo": "Avaria", "itens": [{"produto": nome + "-NOVO", "peso": "2kg"}]}}, 5
 
     monkeypatch.setattr(pipeline.ai_extraction, "extrair_dados_de_lote", fake_extrair)
