@@ -243,12 +243,20 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ===================== UNIFICAÇÃO ESCOPADA =====================
+  // O botão que dispara a unificação tem id `btnUnificarExec`; o código
+  // referenciava `btnIniciarUnificacaoExec`, que não existe no template — o
+  // getElementById devolvia null e o `.classList` estourava TypeError, capturado
+  // pelo handler global como "Ocorreu um erro inesperado".
   function abrirModalUnificacao() {
     document.getElementById("unificacaoExplicacao").classList.remove("d-none");
     document.getElementById("unificacaoProcessando").classList.add("d-none");
     document.getElementById("unificacaoResultado").classList.add("d-none");
     document.getElementById("unificacaoErro").classList.add("d-none");
-    document.getElementById("btnIniciarUnificacaoExec").classList.remove("d-none");
+    document.getElementById("btnUnificarExec").classList.remove("d-none");
+    // O bloco de status do invertexto pertence ao resultado: esconder ao
+    // (re)abrir evita mostrar o link de uma unificação anterior.
+    const status = document.getElementById("invertextoStatus");
+    if (status) status.classList.add("d-none");
     new bootstrap.Modal(document.getElementById("unificacaoModal")).show();
   }
 
@@ -257,7 +265,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     document.getElementById("unificacaoExplicacao").classList.add("d-none");
     document.getElementById("unificacaoProcessando").classList.remove("d-none");
-    document.getElementById("btnIniciarUnificacaoExec").classList.add("d-none");
+    document.getElementById("btnUnificarExec").classList.add("d-none");
+    // Nova unificação: o link publicado antes não vale mais para este conteúdo.
+    const status = document.getElementById("invertextoStatus");
+    if (status) status.classList.add("d-none");
 
     fetch(apiUrl("/unificar"), {
       method: "POST",

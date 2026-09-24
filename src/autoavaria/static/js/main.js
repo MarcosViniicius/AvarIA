@@ -878,14 +878,24 @@ function formatBytes(bytes, decimals = 2) {
 }
 
 /**
- * Manipulador de erros globais
+ * Manipulador de erros globais.
+ *
+ * Mostra a mensagem do erro junto do aviso: o texto genérico sozinho
+ * ("Ocorreu um erro inesperado") obrigava a caçar a causa no console toda vez.
+ * Um erro que vira aviso silencioso é pior que um erro visível.
  */
 function handleGlobalError(event) {
   console.error("Erro global capturado:", event.error);
 
+  const detalhe = event.error && event.error.message
+    ? event.error.message
+    : (event.message || "");
+
   showAlert(
     "danger",
-    "Ocorreu um erro inesperado. Recarregue a página se necessário.",
+    detalhe
+      ? `Erro na página: ${detalhe}`
+      : "Ocorreu um erro inesperado. Recarregue a página se necessário.",
     {
       autoHide: false,
     }
