@@ -459,6 +459,9 @@ Histórico{% endblock %} {% block head %}
             <a id="btnDownloadUnificadoExec" class="btn btn-success w-100" href="#">
               <i class="bi bi-download me-2"></i>Baixar Relatório Unificado
             </a>
+            <button type="button" class="btn btn-outline-primary w-100 mt-2" id="btnEnviarInvertexto">
+              <i class="bi bi-send me-2"></i>Enviar para o invertexto
+            </button>
           </div>
           <div class="d-flex align-items-center gap-2 mb-2 mt-2">
             <button type="button" class="btn btn-outline-secondary btn-sm" id="btnExpandirUnificadoExec">
@@ -495,6 +498,8 @@ Histórico{% endblock %} {% block head %}
 <script src="{{ static_v('js/relatorio.min.js') }}" defer></script>
 <!-- Id da execucao usado pelo modulo de acoes (historico-execucao.js) -->
 <script>window.RUN_ID = {{ execucao.id }};</script>
+<!-- URL do notepad do invertexto (destino do botao "Enviar para o invertexto") -->
+<script>window.INVERTEXTO_URL = {{ (dados_invertexto.url if dados_invertexto else 'https://www.invertexto.com/autoava') | tojson }};</script>
 <script src="{{ static_v('js/reanalise-selecao.js') }}" defer></script>
 <script src="{{ static_v('js/historico-execucao.js') }}" defer></script>
 {% endblock %}

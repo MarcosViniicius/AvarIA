@@ -15,6 +15,7 @@ from ..core.paths import RESULTADOS_DIR
 from ..services import app_state
 from ..services import db as db_service
 from ..services import execucao_export
+from ..services import invertexto
 from ..services.relatorio_view import (
     _COLUNAS_POR_CATEGORIA,
     _construir_dados_relatorio,
@@ -60,6 +61,7 @@ def historico_execucao(run_id):
         versoes=versoes,
         eh_versao_mais_recente=eh_versao_mais_recente,
         origem=origem,
+        dados_invertexto=invertexto.obter_config_publica(),
     )
 
 
@@ -226,7 +228,45 @@ def historico_unificar(run_id):
         "filename": nome_arquivo,
         "formato": formato,
         "contenido": contenido or "",
+        "invertexto": invertexto.obter_config_publica(),
     })
+
+
+@app.route("/historico/execucao/<int:run_id>/enviar_invertexto", methods=["POST"])
+def historico_enviar_invertexto(run_id):
+    """Envia a unificação desta execução para o notepad do invertexto.
+
+    O texto é REGERADO no servidor (em vez de aceitar o do cliente): assim o
+    conteúdo enviado é exatamente o que o sistema produz para esta execução, e
+    o `sanitizar` roda num lugar só — não dá para um cliente mandar texto
+    arbitrário para o notepad por esta rota.
+
+    Corpo opcional: {"secoes": [...]} para restringir as seções enviadas.
+    """
+    execucao = db_service.obter_execucao(run_id)
+    if not execucao:
+        return jsonify({"success": False, "message": "Execução não encontrada"}), 404
+
+    if not invertexto.configurado():
+        return jsonify({
+            "success": False,
+            "message": "Integração com o invertexto não configurada.",
+        }), 400
+
+    dados = _construir_dados_relatorio(execucao["itens"])
+    _, _, contenido = execucao_export.gerar_unificado_execucao(
+        run_id, dados, "txt", return_contenido=True
+    )
+
+    texto = invertexto.sanitizar(contenido or "")
+    sucesso, mensagem = invertexto.enviar(texto)
+
+    return jsonify({
+        "success": sucesso,
+        "message": mensagem,
+        "url": invertexto.obter_config_publica()["url"],
+        "caracteres": len(texto),
+    }), (200 if sucesso else 400)
 
 
 # ---------------------------------------------------------------------------

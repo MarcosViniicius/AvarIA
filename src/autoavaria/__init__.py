@@ -53,6 +53,26 @@ def _register_endpoint_aliases(app):
         )
 
 
+def _configurar_invertexto_no_primeiro_boot():
+    """Captura a config do invertexto uma única vez, no primeiro boot.
+
+    O token do notepad vem embutido no HTML público da página do invertexto —
+    não é gerado aqui, então precisa ser lido de lá. Roda só quando ainda não
+    há token guardado, e nunca deixa uma falha de rede derrubar o app: sem
+    internet, o sistema sobe normal e a exportação fica desabilitada.
+    """
+    from .services import invertexto
+
+    if invertexto.configurado():
+        return
+    try:
+        from .scripts.configurar_invertexto import configurar
+
+        configurar(verbose=False)
+    except Exception as e:
+        print(f"⚠️ Integração com o invertexto indisponível: {e}")
+
+
 def create_app():
     app = Flask(
         __name__,
@@ -71,6 +91,7 @@ def create_app():
         catalogo.popular_do_historico()
     except Exception as e:
         print(f"⚠️ Não foi possível popular o catálogo a partir do histórico: {e}")
+    _configurar_invertexto_no_primeiro_boot()
     register_blueprints(app)
     _register_endpoint_aliases(app)
     register_error_handlers(app)

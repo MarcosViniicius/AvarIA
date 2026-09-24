@@ -346,6 +346,58 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   })();
 
+  // Envio da unificação para o notepad do invertexto. O texto é público no
+  // link, então confirmamos antes — e o servidor regenera/sanitiza o conteúdo
+  // (esta rota não aceita texto do cliente).
+  (function ligarEnvioInvertexto() {
+    const btn = document.getElementById("btnEnviarInvertexto");
+    if (!btn) return;
+
+    btn.addEventListener("click", function () {
+      const url = (window.INVERTEXTO_URL || "https://www.invertexto.com/autoava");
+      const confirmado = window.confirm(
+        "O relatório será publicado no notepad:\n" +
+          url +
+          "\n\nO texto fica PÚBLICO para quem tiver o link (sem senha)." +
+          "\nCaminhos de imagem são removidos automaticamente." +
+          "\n\nDeseja enviar?"
+      );
+      if (!confirmado) return;
+
+      const anterior = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+
+      fetch(apiUrl("/enviar_invertexto"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, dados: j }; }); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (res.ok && res.dados.success) {
+            btn.innerHTML = '<i class="bi bi-check-lg me-2"></i>Enviado!';
+            const alvo = res.dados.url || url;
+            setTimeout(function () {
+              if (window.confirm("Enviado (" + res.dados.caracteres + " caracteres).\n\nAbrir " + alvo + "?")) {
+                window.open(alvo, "_blank", "noopener");
+              }
+              btn.innerHTML = anterior;
+            }, 300);
+          } else {
+            btn.innerHTML = anterior;
+            alert(res.dados.message || "Não foi possível enviar para o invertexto.");
+          }
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.innerHTML = anterior;
+          alert("Erro de comunicação: " + err.message);
+        });
+    });
+  })();
+
   // ===================== REANÁLISE SELETIVA (um / vários / todos) =====================
   // Sem filtros reanalisa tudo (comportamento original). Com item_ids ou
   // categorias, só a seleção vai para a IA; o resto é copiado intacto para
