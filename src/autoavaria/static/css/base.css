@@ -17,29 +17,26 @@ body {
   background: var(--bg);
   color: var(--text-2);
   font-family: var(--font-sans);
-  font-size: 0.9375rem;
-  line-height: 1.6;
+  font-size: 1rem; /* 16px — body-md do design */
+  line-height: 1.65;
+  /* Liga os alternates contextuais e ligaduras do Inter (recomendado pelo
+     design: "calt" e "rlig"). */
+  font-feature-settings: "calt" 1, "rlig" 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Textura sutil: malha radial de fundo (quebra o "flat digital") + grão. */
+/* O design não usa mesh/grão: a superfície é um near-black contínuo quebrado
+   só pelas hairline dos cards. Os pseudo-elementos ficam neutros — mantidos
+   para não quebrar o empilhamento (body > * usa z-index 1). */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(
-      circle at 12% -5%,
-      var(--ambient-1),
-      transparent 42%
-    ),
-    radial-gradient(circle at 95% 0%, var(--ambient-2), transparent 38%),
-    radial-gradient(circle at 50% 120%, var(--ambient-1), transparent 45%);
 }
 
-/* Grão de filme: só em pseudo-elemento fixo, nunca em container com scroll. */
 body::after {
   content: "";
   position: fixed;
@@ -47,8 +44,6 @@ body::after {
   z-index: 0;
   pointer-events: none;
   opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
 }
 
 body > * {
@@ -63,30 +58,58 @@ main {
   z-index: auto;
 }
 
+/* Display do design: weight 400 (calmo, não "billboard"), tracking negativo.
+   É o oposto do headline pesado típico de marketing de IA. */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-  color: var(--text);
-  font-weight: 600;
-  line-height: 1.25;
+  color: var(--text-strong);
+  font-weight: 400;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
+/* display-xl: hero (60px / -0.65px). Escala fluida para caber no mobile. */
 h1 {
-  font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.1rem);
+  font-size: clamp(2rem, 1.4rem + 2.6vw, 3.75rem);
+  letter-spacing: -0.65px;
 }
+/* display-lg: headline de seção (36px / -0.9px). */
 h2 {
-  font-size: clamp(1.35rem, 1.1rem + 0.9vw, 1.7rem);
+  font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.25rem);
+  letter-spacing: -0.9px;
 }
+/* display-md: título de subseção (24px, aqui em 600 para hierarquia clara). */
 h3 {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  line-height: 1.33;
 }
+/* display-sm: título em grade densa (20px / 600). */
 h4 {
-  font-size: 1.1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+h5 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+h6 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
 }
 
 p {
@@ -94,17 +117,38 @@ p {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-hi);
   text-decoration: none;
   transition: color 0.18s var(--ease-out);
 }
 a:hover {
-  color: var(--accent-hi);
+  color: var(--accent);
 }
 
 hr {
   border-color: var(--line);
   opacity: 1;
+}
+
+/* Eyebrow: rótulo maiúsculo com tracking largo — assinatura do design.
+   Inter 600, 14px, 2.52px de tracking. */
+.eyebrow {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.43;
+  letter-spacing: 2.52px;
+  text-transform: uppercase;
+}
+
+/* Divisor tracejado: a única linha ornamental do design, para separar
+   faixas de conteúdo com um ritmo baixo. */
+.dashed-divider {
+  border: 0;
+  border-top: 1px dashed rgba(79, 93, 117, 0.4);
+  margin: 2rem 0;
 }
 
 code,
@@ -115,18 +159,46 @@ pre,
   font-family: var(--font-mono);
 }
 
+/* Código: 13px / 18px do design. A pílula inline distingue do texto. */
+code {
+  padding: 0.1rem 0.35rem;
+  background: var(--surface-2);
+  color: var(--text-code);
+  font-size: 0.8125rem;
+  line-height: 1.15;
+  border-radius: var(--r-xs);
+}
+
+/* code-inline-chip: snippet de comando com fundo canvas-soft. */
+.code-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--canvas-soft);
+  color: var(--text-code);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.15;
+  border-radius: var(--r-sm);
+}
+
 ::selection {
   background: var(--accent-soft);
   color: var(--text);
 }
 
-/* Números sempre alinhados em colunas (tabelas, stats, tokens). */
+/* Números sempre alinhados em colunas (tabelas, stats, tokens) e em mono,
+   como os contadores numéricos do design. */
 .tabular,
 .table td,
 .stat-number,
-.metric-value {
+.metric-value,
+.stat-strip-value {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+
+.stat-strip-value {
+  font-family: var(--font-mono);
 }
 
 /* Acessibilidade: foco sempre visível para navegação por teclado. */

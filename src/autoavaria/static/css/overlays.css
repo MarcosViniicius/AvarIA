@@ -271,8 +271,8 @@
   border-radius: 0 var(--r-xs) var(--r-xs) 0;
 }
 .console .log-processado {
-  border-left-color: #2fbe8a;
-  background: rgba(47, 190, 138, 0.07);
+  border-left-color: var(--accent);
+  background: rgba(0, 217, 146, 0.07);
 }
 .console .log-progresso {
   border-left-color: #5fa8d3;
@@ -299,7 +299,7 @@
   color: #7f8a86 !important;
 }
 .console .text-success {
-  color: #45d6a0 !important;
+  color: var(--accent-hi) !important;
 }
 .console .text-info {
   color: #6bb6dd !important;
