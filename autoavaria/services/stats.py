@@ -57,7 +57,27 @@ def _nomes_do_acervo():
 
 
 def carregar_logs_processados():
-    """Carrega os logs de arquivos já processados."""
+    """Nomes de arquivos já processados.
+
+    Delega para o pipeline (fonte única do cálculo: banco + arquivo). Antes
+    havia DUAS implementações quase idênticas — uma aqui, uma em
+    `extraction_pipeline.carregar_logs` — que podiam divergir sobre o que
+    conta como processado.
+
+    Passa o PRÓPRIO LOG_PROCESSADOS_FILE: os testes trocam esse caminho via
+    monkeypatch, e o pipeline resolveria para o arquivo de produção se lesse a
+    constante dele.
+    """
+    try:
+        from .extraction_pipeline import carregar_logs
+
+        return carregar_logs(arquivo_log=LOG_PROCESSADOS_FILE)
+    except Exception:
+        return _carregar_logs_processados_do_arquivo()
+
+
+def _carregar_logs_processados_do_arquivo():
+    """Fallback legado: lê direto o log_mestre.txt."""
     if not os.path.exists(LOG_PROCESSADOS_FILE):
         return set()
     try:
@@ -66,11 +86,8 @@ def carregar_logs_processados():
             for linha in f:
                 linha = linha.strip()
                 if linha:
-                    # Formato novo: "2025-09-26 12:00:00 - Processado: arquivo.jpg"
                     if " - Processado: " in linha:
-                        nome_arquivo = linha.split(" - Processado: ")[-1]
-                        arquivos_processados.add(nome_arquivo)
-                    # Formato antigo: apenas o nome do arquivo
+                        arquivos_processados.add(linha.split(" - Processado: ")[-1])
                     else:
                         arquivos_processados.add(linha)
         return arquivos_processados
@@ -125,30 +142,18 @@ def obter_estatisticas():
             1 for f in nomes_pendentes if f not in processadas_no_log
         )
 
-        # Último processamento - cache por arquivo
-        if os.path.exists(LOG_PROCESSADOS_FILE):
-            mod_time = os.path.getmtime(LOG_PROCESSADOS_FILE)
-            stats["ultimo_processamento"] = datetime.fromtimestamp(mod_time).strftime(
-                "%d/%m/%Y %H:%M"
-            )
-
-        # Tokens consumidos hoje - otimizado
-        if os.path.exists(LOG_CONSUMO_FILE):
-            hoje = datetime.now().strftime("%Y-%m-%d")
-            try:
-                with open(LOG_CONSUMO_FILE, "r", encoding="utf-8") as f:
-                    # Ler apenas últimas linhas para performance
-                    lines = f.readlines()[-50:]  # Últimas 50 linhas
-                    for linha in lines:
-                        if hoje in linha and "tokens consumidos:" in linha:
-                            tokens_str = (
-                                linha.split("tokens consumidos:")[1]
-                                .strip()
-                                .replace(",", "")
-                            )
-                            stats["tokens_consumidos_hoje"] += int(tokens_str)
-            except (ValueError, IndexError):
-                pass
+        # Último processamento e tokens de hoje: vêm do banco (fonte primária
+        # desde a migração dos logs). O arquivo fica como fallback para
+        # instalações que ainda não importaram o histórico.
+        ultimo, tokens_hoje = _ultimo_processamento_e_tokens_do_banco()
+        if ultimo is None:
+            ultimo = _ultimo_processamento_do_arquivo()
+        if tokens_hoje is None:
+            tokens_hoje = _tokens_de_hoje_do_arquivo()
+        stats["ultimo_processamento"] = ultimo or stats["ultimo_processamento"]
+        stats["tokens_consumidos_hoje"] = (
+            tokens_hoje if tokens_hoje is not None else stats["tokens_consumidos_hoje"]
+        )
 
         # Verifica se existe relatório
         stats["relatorio_existe"] = os.path.exists(ARQUIVO_SAIDA_EXCEL)
@@ -157,6 +162,78 @@ def obter_estatisticas():
         print(f"Erro ao obter estatísticas: {e}")
 
     return stats
+
+
+def _ultimo_processamento_e_tokens_do_banco():
+    """(ultimo_processamento, tokens_hoje) do SQLite; None onde não houver dado.
+
+    Um `None` em cada campo sinaliza "o banco não tem isso" — quem chama decide
+    se cai para o arquivo. Não basta devolver 0/"" senão o fallback nunca roda.
+    """
+    try:
+        from . import db
+
+        ultimo = None
+        tokens_hoje = None
+
+        with db.get_connection() as conn:
+            linha = conn.execute(
+                "SELECT MAX(processado_em) AS ultimo FROM arquivos_processados"
+            ).fetchone()
+            if linha and linha["ultimo"]:
+                ultimo = _formatar_data(linha["ultimo"])
+
+            hoje = datetime.now().strftime("%Y-%m-%d")
+            linha = conn.execute(
+                """SELECT COALESCE(SUM(tokens), 0) AS total
+                   FROM consumo_tokens_log
+                   WHERE substr(registrado_em, 1, 10) = ?""",
+                (hoje,),
+            ).fetchone()
+            if linha is not None:
+                tokens_hoje = int(linha["total"] or 0)
+
+        return ultimo, tokens_hoje
+    except Exception as e:
+        print(f"⚠️ Banco indisponível para as estatísticas de log: {e}")
+        return None, None
+
+
+def _formatar_data(valor: str) -> str:
+    try:
+        return datetime.strptime(valor[:19], "%Y-%m-%d %H:%M:%S").strftime("%d/%m/%Y %H:%M")
+    except (ValueError, TypeError):
+        return str(valor)
+
+
+def _ultimo_processamento_do_arquivo():
+    if not os.path.exists(LOG_PROCESSADOS_FILE):
+        return None
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(LOG_PROCESSADOS_FILE)).strftime("%d/%m/%Y %H:%M")
+    except OSError:
+        return None
+
+
+def _tokens_de_hoje_do_arquivo():
+    """Soma os tokens de hoje lendo o log_consumo_tokens.txt (fallback legado)."""
+    if not os.path.exists(LOG_CONSUMO_FILE):
+        return None
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    total = 0
+    try:
+        with open(LOG_CONSUMO_FILE, "r", encoding="utf-8") as f:
+            for linha in f.readlines()[-50:]:
+                if hoje in linha and "tokens consumidos:" in linha.lower():
+                    try:
+                        bruto = linha.lower().split("tokens consumidos:")[1].strip()
+                        bruto = bruto.split("-")[0].strip().replace(".", "").replace(",", "")
+                        total += int(bruto)
+                    except (ValueError, IndexError):
+                        continue
+    except OSError:
+        return None
+    return total
 
 
 def obter_resultados_recentes():

@@ -13,6 +13,7 @@ import json
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tqdm import tqdm
@@ -141,27 +142,45 @@ def verificar_cancelamento() -> bool:
     return False
 
 
-def carregar_logs() -> set:
-    """Carrega o conjunto de nomes de arquivos já processados (lê o log_mestre.txt)."""
-    if not LOG_PROCESSADOS_FILE.exists():
-        return set()
+def carregar_logs(arquivo_log=None) -> set:
+    """Nomes de arquivos já processados.
+
+    Fonte primária: a tabela `arquivos_processados` no SQLite. O arquivo
+    (log_mestre.txt) continua sendo lido como reforço — a UNIÃO das duas
+    fontes, para nunca reanalisar algo que já foi processado só porque a
+    migração ainda não rodou.
+
+    `arquivo_log` permite a quem chama apontar outro caminho (a tela de
+    estatísticas tem a própria referência e os testes a substituem).
+    """
+    arquivo_log = arquivo_log if arquivo_log is not None else LOG_PROCESSADOS_FILE
+    processados = set()
+
     try:
-        arquivos_processados = set()
-        with open(LOG_PROCESSADOS_FILE, "r", encoding="utf-8") as f:
+        processados |= db.listar_arquivos_processados()
+    except Exception as e:
+        print(f"⚠️ Banco indisponível para ler processados, usando só o arquivo: {e}")
+
+    arquivo_log = Path(arquivo_log) if not isinstance(arquivo_log, Path) else arquivo_log
+    if not arquivo_log.exists():
+        return processados
+
+    try:
+        with open(arquivo_log, "r", encoding="utf-8") as f:
             for linha in f:
                 linha = linha.strip()
                 if not linha:
                     continue
                 # Formato atual: "2026-07-23 23:27:36 - Processado: IMG-0001.jpg"
                 if " - Processado: " in linha:
-                    arquivos_processados.add(linha.split(" - Processado: ")[-1])
+                    processados.add(linha.split(" - Processado: ")[-1])
                 else:
                     # Formato legado: apenas o nome do arquivo
-                    arquivos_processados.add(linha)
-        return arquivos_processados
+                    processados.add(linha)
+        return processados
     except IOError as e:
         print(f"⚠️ Erro ao ler log de arquivos processados: {e}")
-        return set()
+        return processados
 
 
 def listar_imagens_pendentes(diretorio_imagens: Optional[str] = None) -> list:
@@ -263,10 +282,22 @@ def caminho_fisico_pendente(nome_original: str, diretorio_imagens: Optional[str]
 
 
 def registrar_log(nome_arquivo: str) -> None:
-    """Registra um arquivo como processado no log."""
+    """Marca um arquivo como processado.
+
+    Grava no SQLite (fonte primária) e também no log_mestre.txt (o arquivo
+    segue existindo como histórico legível e para não quebrar instalações que
+    o inspecionam). A leitura (carregar_logs) une as duas fontes, então gravar
+    só num delas nunca causa reanálise indevida.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        db.registrar_arquivo_processado(nome_arquivo, timestamp)
+    except Exception as e:
+        print(f"❌ Erro ao registrar arquivo no banco: {e}")
+
     try:
         LOG_PROCESSADOS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(LOG_PROCESSADOS_FILE, "a", encoding="utf-8") as f:
             f.write(f"{timestamp} - Processado: {nome_arquivo}\n")
     except Exception as e:
@@ -274,10 +305,16 @@ def registrar_log(nome_arquivo: str) -> None:
 
 
 def registrar_consumo_log(total_tokens: int, detalhes_extras: str = "") -> None:
-    """Salva o consumo total de tokens com data e hora em um arquivo de log."""
+    """Registra o consumo total de tokens (banco + arquivo de log)."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        db.registrar_consumo_log(total_tokens, detalhes_extras or None, timestamp)
+    except Exception as e:
+        print(f"❌ Erro ao registrar consumo no banco: {e}")
+
     try:
         LOG_CONSUMO_FILE.parent.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"{timestamp} - Tokens consumidos: {total_tokens:,}"
         if detalhes_extras:
             log_entry += f" - {detalhes_extras}"

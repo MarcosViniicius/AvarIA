@@ -19,6 +19,19 @@ from ..services import db as db_service
 from ..services import maintenance
 
 
+def _limpar_logs_no_banco():
+    """Limpa os logs no SQLite (fonte primária desde a migração).
+
+    Não basta remover os .txt: a leitura consulta o banco primeiro, então sem
+    isto "Limpar Logs" não teria efeito visível.
+    """
+    try:
+        db_service.limpar_arquivos_processados()
+        db_service.limpar_consumo_log()
+    except Exception as e:
+        print(f"⚠️ Falha ao limpar os logs no banco: {e}")
+
+
 @app.route("/limpar_dados", methods=["POST"])
 def limpar_dados():
     """Limpa dados processados."""
@@ -30,6 +43,7 @@ def limpar_dados():
                 os.remove(LOG_PROCESSADOS_FILE)
             if os.path.exists(LOG_CONSUMO_FILE):
                 os.remove(LOG_CONSUMO_FILE)
+            _limpar_logs_no_banco()
             message = "Logs limpos com sucesso!"
 
         elif tipo == "relatorio":
@@ -82,6 +96,7 @@ def limpar_dados():
                 os.remove(LOG_PROCESSADOS_FILE)
             if os.path.exists(LOG_CONSUMO_FILE):
                 os.remove(LOG_CONSUMO_FILE)
+            _limpar_logs_no_banco()
 
             message = "Imagens e histórico de processamento removidos - pronto para enviar e processar do zero."
             if itens_afetados:

@@ -476,21 +476,48 @@ class TestModoSemIA:
 
 
 class TestCarregarLogs:
-    def test_le_formato_atual_com_timestamp(self, tmp_path, monkeypatch):
+    """A leitura agora une banco + arquivo; os testes isolam os dois (tmp_db
+    zera a tabela, e o LOG_PROCESSADOS_FILE aponta para um arquivo temporário)."""
+
+    def test_le_formato_atual_com_timestamp(self, tmp_path, monkeypatch, tmp_db):
         log = tmp_path / "log.txt"
         log.write_text("2026-07-24 23:27:36 - Processado: IMG-1.jpg\n", encoding="utf-8")
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", log)
         assert pipeline.carregar_logs() == {"IMG-1.jpg"}
 
-    def test_le_formato_legado_so_com_o_nome(self, tmp_path, monkeypatch):
+    def test_le_formato_legado_so_com_o_nome(self, tmp_path, monkeypatch, tmp_db):
         log = tmp_path / "log.txt"
         log.write_text("IMG-antigo.jpg\n", encoding="utf-8")
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", log)
         assert pipeline.carregar_logs() == {"IMG-antigo.jpg"}
 
-    def test_sem_arquivo_retorna_vazio(self, tmp_path, monkeypatch):
+    def test_sem_arquivo_retorna_vazio(self, tmp_path, monkeypatch, tmp_db):
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", tmp_path / "nao_existe.txt")
         assert pipeline.carregar_logs() == set()
+
+    def test_une_banco_e_arquivo(self, tmp_path, monkeypatch, tmp_db):
+        """A união é o ponto: não pode reanalisar algo que está só numa das fontes."""
+        from autoavaria.services import db
+
+        db.registrar_arquivo_processado("IMG-do-banco.jpg")
+        log = tmp_path / "log.txt"
+        log.write_text("IMG-do-arquivo.jpg\n", encoding="utf-8")
+        monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", log)
+
+        resultado = pipeline.carregar_logs()
+        assert "IMG-do-banco.jpg" in resultado
+        assert "IMG-do-arquivo.jpg" in resultado
+
+    def test_registrar_log_grava_nas_duas_fontes(self, tmp_path, monkeypatch, tmp_db):
+        from autoavaria.services import db
+
+        log = tmp_path / "log.txt"
+        monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", log)
+
+        pipeline.registrar_log("IMG-nova.jpg")
+
+        assert "IMG-nova.jpg" in db.listar_arquivos_processados()
+        assert "IMG-nova.jpg" in log.read_text(encoding="utf-8")
 
 
 class TestListarImagensPendentes:

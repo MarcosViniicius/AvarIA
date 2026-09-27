@@ -73,6 +73,29 @@ def _configurar_invertexto_no_primeiro_boot():
         print(f"⚠️ Integração com o invertexto indisponível: {e}")
 
 
+def _importar_logs_legados():
+    """Importa logs/log_mestre.txt e log_consumo_tokens.txt para o SQLite.
+
+    Uma vez, no boot. Idempotente (ver db.importar_logs_dos_arquivos). Os
+    arquivos continuam sendo escritos junto com o banco; esta importação só
+    garante que o histórico anterior à migração não se perca.
+    """
+    try:
+        from .core.paths import LOG_CONSUMO_FILE, LOG_PROCESSADOS_FILE
+        from .services import db as db_service
+
+        resultado = db_service.importar_logs_dos_arquivos(
+            LOG_PROCESSADOS_FILE, LOG_CONSUMO_FILE
+        )
+        if resultado["processados"] or resultado["consumo"]:
+            print(
+                f"📥 Logs importados para o banco: "
+                f"{resultado['processados']} processados, {resultado['consumo']} consumo"
+            )
+    except Exception as e:
+        print(f"⚠️ Não foi possível importar os logs legados: {e}")
+
+
 def create_app():
     app = Flask(
         __name__,
@@ -92,6 +115,7 @@ def create_app():
     except Exception as e:
         print(f"⚠️ Não foi possível popular o catálogo a partir do histórico: {e}")
     _configurar_invertexto_no_primeiro_boot()
+    _importar_logs_legados()
     register_blueprints(app)
     _register_endpoint_aliases(app)
     register_error_handlers(app)

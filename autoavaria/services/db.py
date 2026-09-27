@@ -121,6 +121,31 @@ CREATE TABLE IF NOT EXISTS arquivos (
 CREATE INDEX IF NOT EXISTS idx_arquivos_hash ON arquivos(hash_sha256);
 CREATE INDEX IF NOT EXISTS idx_arquivos_nome_original ON arquivos(nome_original);
 CREATE INDEX IF NOT EXISTS idx_arquivos_pasta ON arquivos(pasta);
+
+-- Arquivos já processados: era o logs/log_mestre.txt (uma linha por arquivo).
+-- O texto funcionava, mas exigia ler o arquivo inteiro para responder "esta
+-- imagem já foi analisada?" — e havia DUAS implementações quase idênticas
+-- (extraction_pipeline.carregar_logs e stats.carregar_logs_processados) que
+-- podiam divergir. Agora é uma linha por arquivo, com índice por nome.
+-- O .txt continua sendo escrito em paralelo para compatibilidade (ver
+-- services/extraction_pipeline.py:registrar_log).
+CREATE TABLE IF NOT EXISTS arquivos_processados (
+    nome TEXT PRIMARY KEY,
+    processado_em TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_arquivos_processados_data ON arquivos_processados(processado_em);
+
+-- Consumo de tokens por operação: era o logs/log_consumo_tokens.txt.
+-- A tabela token_usage (por execução) já existia e é preenchida pelo pipeline;
+-- esta guarda o registro CRU do log, que também cobre execuções que não têm
+-- run_id (ex.: reanálises antigas), preservando o histórico do arquivo.
+CREATE TABLE IF NOT EXISTS consumo_tokens_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    registrado_em TEXT NOT NULL,
+    tokens INTEGER NOT NULL DEFAULT 0,
+    detalhes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_consumo_tokens_data ON consumo_tokens_log(registrado_em);
 """
 
 
@@ -598,6 +623,175 @@ def contar_itens_com_imagem() -> int:
             "SELECT COUNT(*) AS total FROM report_items WHERE caminho_imagem IS NOT NULL AND caminho_imagem != ''"
         ).fetchone()
         return row["total"]
+
+
+# ---------------------------------------------------------------------------
+# Arquivos já processados (era o logs/log_mestre.txt)
+# ---------------------------------------------------------------------------
+
+def registrar_arquivo_processado(nome: str, quando: Optional[str] = None) -> None:
+    """Marca um arquivo como processado. Idempotente (o nome é a chave)."""
+    if not nome:
+        return
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO arquivos_processados (nome, processado_em)
+               VALUES (?, ?)
+               ON CONFLICT(nome) DO NOTHING""",
+            (nome, quando or _now()),
+        )
+
+
+def listar_arquivos_processados() -> set:
+    """Conjunto de nomes já processados — a fonte da verdade atual."""
+    with get_connection() as conn:
+        return {
+            row["nome"]
+            for row in conn.execute("SELECT nome FROM arquivos_processados")
+        }
+
+
+def limpar_arquivos_processados() -> int:
+    """Remove todo o histórico de processados. Devolve quantos saíram."""
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM arquivos_processados")
+        return cursor.rowcount
+
+
+# ---------------------------------------------------------------------------
+# Consumo de tokens (era o logs/log_consumo_tokens.txt)
+# ---------------------------------------------------------------------------
+
+def registrar_consumo_log(tokens: int, detalhes: Optional[str] = None,
+                          quando: Optional[str] = None) -> None:
+    """Grava uma linha do log de consumo (valores já acumulados)."""
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO consumo_tokens_log (registrado_em, tokens, detalhes)
+               VALUES (?, ?, ?)""",
+            (quando or _now(), int(tokens or 0), detalhes),
+        )
+
+
+def listar_consumo_log(limite: int = 500) -> List[Dict[str, Any]]:
+    """Linhas do log de consumo, mais recentes primeiro."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT registrado_em, tokens, detalhes
+               FROM consumo_tokens_log
+               ORDER BY id DESC LIMIT ?""",
+            (limite,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def limpar_consumo_log() -> int:
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM consumo_tokens_log")
+        return cursor.rowcount
+
+
+def importar_logs_dos_arquivos(log_processados, log_consumo) -> Dict[str, int]:
+    """Importa os .txt legados para o banco (idempotente).
+
+    Lê o formato histórico de cada um:
+    - processados: "2026-07-23 23:27:36 - Processado: IMG-1.jpg" ou só o nome;
+    - consumo:     "2026-07-23 23:27:36 - Tokens consumidos: 1,234 - detalhes".
+
+    Chamado uma vez no boot (ver create_app). Rodar de novo não duplica:
+    processados tem chave primária por nome; consumo é importado só se a tabela
+    estiver vazia (senão cada boot repetiria o histórico do arquivo).
+    """
+    importadas_processados = 0
+    importadas_consumo = 0
+
+    try:
+        if log_processados and log_processados.exists():
+            registros = [
+                (nome, quando)
+                for nome, quando in _ler_nomes_processados(log_processados)
+                if nome
+            ]
+            with get_connection() as conn:
+                antes = conn.execute("SELECT COUNT(*) AS n FROM arquivos_processados").fetchone()["n"]
+                conn.executemany(
+                    """INSERT INTO arquivos_processados (nome, processado_em)
+                       VALUES (?, ?)
+                       ON CONFLICT(nome) DO NOTHING""",
+                    [(nome, quando or _now()) for nome, quando in registros],
+                )
+                depois = conn.execute("SELECT COUNT(*) AS n FROM arquivos_processados").fetchone()["n"]
+                importadas_processados = depois - antes
+    except Exception as e:
+        print(f"⚠️ Falha ao importar log de processados: {e}")
+
+    try:
+        if log_consumo and log_consumo.exists():
+            with get_connection() as conn:
+                vazio = conn.execute(
+                    "SELECT COUNT(*) AS n FROM consumo_tokens_log"
+                ).fetchone()["n"] == 0
+                if vazio:
+                    registros = list(_ler_consumo(log_consumo))
+                    conn.executemany(
+                        """INSERT INTO consumo_tokens_log (registrado_em, tokens, detalhes)
+                           VALUES (?, ?, ?)""",
+                        registros,
+                    )
+                    importadas_consumo = len(registros)
+    except Exception as e:
+        print(f"⚠️ Falha ao importar log de consumo: {e}")
+
+    return {"processados": importadas_processados, "consumo": importadas_consumo}
+
+
+def _ler_nomes_processados(caminho) -> List[tuple]:
+    """Extrai (nome, quando) do log de processados, preservando a data.
+
+    Aceita o formato atual ("2026-07-23 23:27:36 - Processado: IMG-1.jpg") e o
+    legado (só o nome, sem data — aí `quando` fica None). Preservar a data
+    importa: sem ela, a estatística de "último processamento" mentiria, dizendo
+    que tudo rodou no dia da migração.
+    """
+    import re
+
+    padrao = re.compile(r"^(?P<quando>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*-\s*Processado:\s*(?P<nome>.+)$")
+    registros = []
+    with open(caminho, "r", encoding="utf-8") as f:
+        for linha in f:
+            linha = linha.strip()
+            if not linha:
+                continue
+            m = padrao.match(linha)
+            if m:
+                registros.append((m.group("nome").strip(), m.group("quando")))
+            else:
+                # Formato legado: apenas o nome do arquivo, sem data.
+                registros.append((linha, None))
+    return registros
+
+
+def _ler_consumo(caminho):
+    """Gera (quando, tokens, detalhes) a partir do log de consumo legado."""
+    import re
+
+    padrao = re.compile(
+        r"^(?P<quando>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*-\s*"
+        r"Tokens consumidos:\s*(?P<tokens>[\d.,]+)\s*(?:-\s*(?P<detalhes>.*))?$"
+    )
+    with open(caminho, "r", encoding="utf-8") as f:
+        for linha in f:
+            linha = linha.strip()
+            if not linha:
+                continue
+            m = padrao.match(linha)
+            if not m:
+                continue
+            try:
+                tokens = int(m.group("tokens").replace(".", "").replace(",", ""))
+            except ValueError:
+                continue
+            yield (m.group("quando"), tokens, m.group("detalhes"))
 
 
 # ---------------------------------------------------------------------------
