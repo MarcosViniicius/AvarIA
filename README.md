@@ -129,7 +129,7 @@ autoavaria/
 ├── config/
 │   ├── config.json                     # Configurações (gerado automaticamente, não versionado)
 │   └── config.example.json             # Template de configuração
-├── src/autoavaria/
+├── autoavaria/
 │   ├── routes/                         # Blueprints Flask (upload, processamento, histórico,
 │   │                                    # relatório, edição, unificação, erros/reanálise, etc.)
 │   ├── services/                       # Regras de negócio: extração (IA + código de barras),

@@ -18,8 +18,8 @@ import pytest
 
 from autoavaria import create_app
 
-TEMPLATES = Path(__file__).resolve().parents[1] / "src" / "autoavaria" / "templates"
-JS_DIR = Path(__file__).resolve().parents[1] / "src" / "autoavaria" / "static" / "js"
+TEMPLATES = Path(__file__).resolve().parents[1] / "autoavaria" / "templates"
+JS_DIR = Path(__file__).resolve().parents[1] / "autoavaria" / "static" / "js"
 
 # Handlers inline que ainda são legítimos: funções pequenas, deliberadamente
 # globais (definidas com `function nome()` no escopo do módulo, fora de

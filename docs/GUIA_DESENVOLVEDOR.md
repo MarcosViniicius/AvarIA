@@ -36,7 +36,7 @@ app.py → autoavaria.create_app()
   templates/ + static/ Jinja + Bootstrap, tema claro/escuro
 ```
 
-`create_app()` (`src/autoavaria/__init__.py:56`): settings → logging → `ensure_directories()` → `db.init_db()` → `backfill_relatorios_unificados` → `campo_migration` → `catalogo.popular_do_historico()` → blueprints → aliases → error handlers → static versioning (`mtime`) → optimizations.
+`create_app()` (`autoavaria/__init__.py:56`): settings → logging → `ensure_directories()` → `db.init_db()` → `backfill_relatorios_unificados` → `campo_migration` → `catalogo.popular_do_historico()` → blueprints → aliases → error handlers → static versioning (`mtime`) → optimizations.
 
 Princípios: rotas finas, services puros, Excel = fonte de trabalho, SQLite = histórico/versionamento/catálogo, escrita única de export (`export_service.py`), unificação pura (`unification.py`).
 

@@ -81,8 +81,11 @@ $RECYCLE.BIN/
 # 🔒 SEGURANÇA (CRÍTICO)
 # ============================================
 
-# Configuração com API keys sensíveis
-config/config.json
+# Configuração com API keys sensíveis. O padrão sem barra inicial casa em
+# QUALQUER nível — inclusive dentro do pacote (autoavaria/config/config.json),
+# que já apareceu por engano quando paths.py apontava para o lugar errado.
+config.json
+!config/config.example.json
 
 # Variáveis de ambiente
 .env
@@ -103,31 +106,35 @@ credentials.json
 # 📁 DADOS DO PROJETO (CRÍTICO)
 # ============================================
 
-# Logs da aplicação
+# Dados gerados: ficam na raiz (ver core/paths.py), nunca dentro do pacote.
+# Sem a barra inicial, o padrão casa em qualquer nível — protege contra um
+# paths.py mal configurado voltar a despejar dados dentro de autoavaria/.
 logs/
-logs/*.txt
-logs/*.log
-
-# Resultados gerados
-resultados/*
+resultados/
 !resultados/README.md
 !resultados/.gitkeep
 
-# Banco de dados local (SQLite)
-database/*
+database/
 !database/.gitkeep
 *.db
 *.sqlite
 *.sqlite3
 
-# Imagens enviadas para análise
 imagens_para_analisar/*
 !imagens_para_analisar/.gitkeep
 !imagens_para_analisar/*.opus
 
-# Imagens já processadas e arquivadas (ver services/image_archive.py)
 imagens_processadas/*
 !imagens_processadas/.gitkeep
+
+# Proteção extra: dado gerado NUNCA deve viver dentro do pacote (autoavaria/).
+# Se um paths.py mal configurado voltar a apontar para lá, isto impede que
+# imagens e resultados sejam commitados por engano.
+autoavaria/imagens_para_analisar/
+autoavaria/imagens_processadas/
+autoavaria/logs/
+autoavaria/resultados/
+autoavaria/database/
 
 # Backups de relatórios
 *.xlsx.bak
