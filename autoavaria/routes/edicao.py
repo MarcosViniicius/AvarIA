@@ -24,59 +24,83 @@ from ..services.report_editing import (
 )
 
 
-def _sincronizar_edicao_no_banco(sheet_name: str, valores_originais: dict, campo: str, novo_valor) -> None:
-    """Propaga uma edição de campo único do Excel para o item correspondente
-    no banco (se encontrado com segurança - ver db.buscar_item_por_caminho).
+def _sincronizar_edicao_no_banco(sheet_name: str, valores_originais: dict, campo: str, novo_valor) -> int:
+    """Propaga uma edição de campo do Excel para o(s) item(ns) no banco.
 
-    Sem isso, editar um item aqui (usado a partir da tela de Relatório)
-    corrigia só o Excel; o Histórico e as exportações por execução
-    continuavam mostrando o valor antigo, porque liam do banco.
+    Devolve quantos itens foram atualizados. Atualiza TODAS as correspondências
+    exatas: a mesma imagem processada em várias execuções gera linhas
+    equivalentes (uma por execução), e editar uma linha do Excel deve refletir
+    em todas elas — antes o código exigia uma única linha e desistia em 22% dos
+    casos, deixando o Histórico desatualizado em silêncio.
+
+    Sem isso, editar um item aqui corrigia só o Excel; o Histórico e as
+    exportações por execução continuavam mostrando o valor antigo.
     """
     try:
-        item_id = db.buscar_item_por_caminho(
+        ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
-        if item_id is not None:
-            db.atualizar_item_campo(item_id, campo, novo_valor)
+        return db.atualizar_itens_campo(ids, campo, novo_valor)
     except Exception as e:
         print(f"⚠️ Não foi possível sincronizar a edição com o banco: {e}")
+        return 0
 
 
-def _sincronizar_edicao_completa_no_banco(sheet_name: str, valores_originais: dict, dados_linha: dict) -> None:
-    """Mesma ideia de `_sincronizar_edicao_no_banco`, mas para edição de linha completa."""
+def _sincronizar_edicao_completa_no_banco(sheet_name: str, valores_originais: dict, dados_linha: dict) -> int:
+    """Mesma ideia de `_sincronizar_edicao_no_banco`, mas para a linha inteira."""
     try:
-        item_id = db.buscar_item_por_caminho(
+        ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
-        if item_id is not None:
-            db.atualizar_item_completo(item_id, dados_linha)
+        return db.atualizar_itens_completo(ids, dados_linha)
     except Exception as e:
         print(f"⚠️ Não foi possível sincronizar a edição com o banco: {e}")
+        return 0
 
 
-def _sincronizar_exclusao_no_banco(sheet_name: str, valores_originais: dict) -> None:
+def _sincronizar_exclusao_no_banco(sheet_name: str, valores_originais: dict) -> int:
     try:
-        item_id = db.buscar_item_por_caminho(
+        ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
-        if item_id is not None:
-            run_id = db.excluir_item(item_id)
-            if run_id is not None:
-                db.recalcular_contagens(run_id)
+        runs = db.excluir_itens(ids)
+        for run_id in runs:
+            db.recalcular_contagens(run_id)
+        return len(ids)
     except Exception as e:
         print(f"⚠️ Não foi possível sincronizar a exclusão com o banco: {e}")
+        return 0
 
 
-def _sincronizar_movimentacao_no_banco(sheet_origem: str, sheet_destino: str, valores_originais: dict, nova_linha: dict) -> None:
+def _sincronizar_movimentacao_no_banco(sheet_origem: str, sheet_destino: str, valores_originais: dict, nova_linha: dict) -> int:
     try:
-        item_id = db.buscar_item_por_caminho(
+        ids = db.buscar_itens_por_caminho(
             sheet_origem, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
-        if item_id is not None:
-            db.mover_item_categoria(item_id, sheet_destino)
-            db.atualizar_item_completo(item_id, nova_linha)
+        if not ids:
+            return 0
+        db.mover_itens_categoria(ids, sheet_destino)
+        db.atualizar_itens_completo(ids, nova_linha)
+        return len(ids)
     except Exception as e:
         print(f"⚠️ Não foi possível sincronizar a movimentação com o banco: {e}")
+        return 0
+
+
+def _aviso_sincronizacao(afetados: int) -> str:
+    """Mensagem sobre o efeito no banco, para não haver alteração silenciosa.
+
+    Quando nada sincroniza, o usuário precisa saber: a edição valeu no Excel
+    (que é o que as telas de edição mostram), mas o Histórico continuará com o
+    valor antigo. Silêncio aqui já causou divergência percebida como bug.
+    """
+    if afetados > 0:
+        return ""
+    return (
+        " Atenção: não foi possível identificar esta linha no Histórico "
+        "(há itens diferentes associados à mesma imagem), então o Histórico "
+        "continua com o valor anterior — a alteração vale para o relatório."
+    )
 
 
 @app.route("/editar_dados")
@@ -229,11 +253,15 @@ def salvar_edicao():
 
         # Salvar arquivo Excel
         salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
-        _sincronizar_edicao_no_banco(sheet_name, valores_originais, campo, novo_valor)
+        afetados = _sincronizar_edicao_no_banco(sheet_name, valores_originais, campo, novo_valor)
 
         print(f"✅ Edição salva com sucesso!")
         return jsonify(
-            {"success": True, "message": f'Campo "{campo}" atualizado com sucesso!'}
+            {
+                "success": True,
+                "message": f'Campo "{campo}" atualizado com sucesso!'
+                + _aviso_sincronizacao(afetados),
+            }
         )
 
     except FileNotFoundError:
@@ -336,7 +364,7 @@ def salvar_edicao_completa():
 
         # Salvar arquivo Excel
         salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
-        _sincronizar_edicao_completa_no_banco(sheet_name, valores_originais, dados_linha)
+        afetados = _sincronizar_edicao_completa_no_banco(sheet_name, valores_originais, dados_linha)
 
         print(
             f"✅ Edição completa salva com sucesso! Campos atualizados: {', '.join(campos_atualizados)}"
@@ -344,7 +372,8 @@ def salvar_edicao_completa():
         return jsonify(
             {
                 "success": True,
-                "message": f"Linha atualizada com sucesso! ({len(campos_atualizados)} campos alterados)",
+                "message": f"Linha atualizada com sucesso! ({len(campos_atualizados)} campos alterados)"
+                + _aviso_sincronizacao(afetados),
             }
         )
 
@@ -423,10 +452,15 @@ def excluir_linha():
 
         # Salvar arquivo Excel
         salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
-        _sincronizar_exclusao_no_banco(sheet_name, valores_originais)
+        afetados = _sincronizar_exclusao_no_banco(sheet_name, valores_originais)
 
         print(f"✅ Linha excluída com sucesso!")
-        return jsonify({"success": True, "message": "Linha excluída com sucesso!"})
+        return jsonify(
+            {
+                "success": True,
+                "message": "Linha excluída com sucesso!" + _aviso_sincronizacao(afetados),
+            }
+        )
 
     except FileNotFoundError:
         return jsonify(
@@ -608,7 +642,7 @@ def mover_item():
 
         # Salvar arquivo Excel (só grava planilhas não vazias)
         salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets, apenas_nao_vazias=True)
-        _sincronizar_movimentacao_no_banco(sheet_origem, sheet_destino, linha_dados.to_dict(), nova_linha)
+        afetados = _sincronizar_movimentacao_no_banco(sheet_origem, sheet_destino, linha_dados.to_dict(), nova_linha)
 
         produto_nome = nova_linha.get("Produto", nova_linha.get("Arquivo", "Item"))
         print(
@@ -618,7 +652,8 @@ def mover_item():
         return jsonify(
             {
                 "success": True,
-                "message": f"Item '{produto_nome}' movido com sucesso de '{sheet_origem}' para '{sheet_destino}'!",
+                "message": f"Item '{produto_nome}' movido com sucesso de '{sheet_origem}' para '{sheet_destino}'!"
+                + _aviso_sincronizacao(afetados),
             }
         )
 

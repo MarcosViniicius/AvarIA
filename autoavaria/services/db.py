@@ -374,27 +374,32 @@ def adicionar_item(run_id: Optional[int], categoria: str, dados: Dict[str, str])
         return cursor.lastrowid
 
 
-def buscar_item_por_caminho(
-    categoria: str, caminho_imagem: str, valores_atuais: Optional[Dict[str, str]] = None
-) -> Optional[int]:
-    """Encontra o `report_items.id` correspondente a uma linha do Excel.
+def buscar_itens_por_caminho(
+    categoria: str, caminho_imagem: str, valores_atuais: Optional[Dict[str, Any]] = None
+) -> List[int]:
+    """Todos os `report_items.id` que correspondem a uma linha do Excel.
 
     O Excel (editado via routes/edicao.py) não guarda o id do banco — só tem
-    posição de linha, que não é estável entre execuções. `categoria +
-    caminho_imagem` é a melhor chave disponível para correlacionar as duas
-    fontes, mas uma foto pode gerar mais de um item (ex.: "2 alface, 4
-    coentro" na mesma imagem), o que tornaria essa chave ambígua sozinha.
+    posição de linha, que não é estável. `categoria + caminho_imagem` é a
+    melhor chave disponível, mas uma foto pode gerar mais de um item (ex.: "2
+    alface, 4 coentro" na mesma imagem) — e a MESMA imagem pode ter sido
+    processada em várias execuções, gerando linhas equivalentes em cada uma
+    (`report_items` guarda por execução; o Excel mestre acumula).
 
-    Por isso: se houver mais de uma linha com a mesma categoria+caminho,
-    `valores_atuais` (o restante da linha, ANTES da edição) é usado para
-    desempatar - só retorna um id quando exatamente uma linha bate com todos
-    os valores informados. Se não for possível identificar com segurança
-    qual linha é, devolve None e o chamador simplesmente não sincroniza essa
-    edição com o banco (a gravação no Excel, que é a fonte principal,
-    continua acontecendo normalmente).
+    Por isso devolvemos a LISTA de correspondências:
+    - uma só linha com categoria+caminho -> essa;
+    - várias, mas `valores_atuais` (o resto da linha ANTES da edição) bate
+      exatamente em algumas -> essas (é o mesmo dado duplicado entre
+      execuções: editar uma deve refletir em todas);
+    - várias e nenhuma bate exatamente -> lista vazia (ambíguo de verdade:
+      são itens diferentes na mesma foto, não dá para saber qual);
+    - sem `valores_atuais`, havendo mais de uma -> lista vazia.
+
+    Quem chama decide o que fazer com "não achou" — antes isso era silencioso
+    e a edição ia só para o Excel, deixando o Histórico desatualizado.
     """
     if not caminho_imagem:
-        return None
+        return []
     with get_connection() as conn:
         linhas = conn.execute(
             "SELECT * FROM report_items WHERE categoria = ? AND caminho_imagem = ?",
@@ -402,12 +407,11 @@ def buscar_item_por_caminho(
         ).fetchall()
 
     if not linhas:
-        return None
+        return []
     if len(linhas) == 1:
-        return linhas[0]["id"]
-
+        return [linhas[0]["id"]]
     if not valores_atuais:
-        return None
+        return []
 
     candidatas = []
     for linha in linhas:
@@ -422,7 +426,84 @@ def buscar_item_por_caminho(
         if bate:
             candidatas.append(linha["id"])
 
+    return candidatas
+
+
+def buscar_item_por_caminho(
+    categoria: str, caminho_imagem: str, valores_atuais: Optional[Dict[str, Any]] = None
+) -> Optional[int]:
+    """Um único `report_items.id`, quando não há ambiguidade (None se houver).
+
+    Mantida para quem precisa de uma linha só. A edição usa
+    `buscar_itens_por_caminho` para atualizar todas as correspondências.
+    """
+    candidatas = buscar_itens_por_caminho(categoria, caminho_imagem, valores_atuais)
     return candidatas[0] if len(candidatas) == 1 else None
+
+
+def atualizar_itens_campo(item_ids: List[int], campo: str, novo_valor) -> int:
+    """Atualiza um campo de vários itens de uma vez. Devolve quantos mudaram."""
+    if not item_ids:
+        return 0
+    coluna = _CAMPO_PARA_COLUNA.get(campo)
+    if not coluna:
+        return 0
+    marcadores = ",".join("?" for _ in item_ids)
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"UPDATE report_items SET {coluna} = ? WHERE id IN ({marcadores})",
+            (novo_valor, *item_ids),
+        )
+        return cursor.rowcount
+
+
+def atualizar_itens_completo(item_ids: List[int], dados: Dict[str, Any]) -> int:
+    """Atualiza vários campos de vários itens. Devolve quantos itens mudaram."""
+    if not item_ids or not dados:
+        return 0
+    campos = {k: v for k, v in dados.items() if k in _CAMPO_PARA_COLUNA}
+    if not campos:
+        return 0
+    atribuicoes = ", ".join(f"{_CAMPO_PARA_COLUNA[k]} = ?" for k in campos)
+    marcadores = ",".join("?" for _ in item_ids)
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"UPDATE report_items SET {atribuicoes} WHERE id IN ({marcadores})",
+            (*campos.values(), *item_ids),
+        )
+        return cursor.rowcount
+
+
+def excluir_itens(item_ids: List[int]) -> set:
+    """Exclui vários itens. Devolve o conjunto de run_ids afetados."""
+    if not item_ids:
+        return set()
+    marcadores = ",".join("?" for _ in item_ids)
+    with get_connection() as conn:
+        runs = {
+            row["run_id"]
+            for row in conn.execute(
+                f"SELECT DISTINCT run_id FROM report_items WHERE id IN ({marcadores})",
+                item_ids,
+            )
+            if row["run_id"] is not None
+        }
+        conn.execute(f"DELETE FROM report_items WHERE id IN ({marcadores})", item_ids)
+    return runs
+
+
+def mover_itens_categoria(item_ids: List[int], nova_categoria: str) -> int:
+    """Move vários itens de categoria. Devolve quantos mudaram."""
+    if not item_ids:
+        return 0
+    marcadores = ",".join("?" for _ in item_ids)
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"UPDATE report_items SET categoria = ? WHERE id IN ({marcadores})",
+            (nova_categoria, *item_ids),
+        )
+        return cursor.rowcount
+
 
 
 def recalcular_contagens(run_id: int) -> None:
