@@ -651,6 +651,35 @@ def listar_execucoes(limite: int = 50) -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def recuperar_execucoes_orfas() -> int:
+    """Marca como 'erro' as execuções presas em 'em_andamento'. Devolve quantas.
+
+    Chamado no boot (ver create_app). Uma execução só pode estar em andamento
+    enquanto o processo está vivo; se o app subiu e há uma nesse estado, o
+    processo que a criou morreu no meio (queda, Ctrl+C, reload do dev server) e
+    ela nunca vai terminar sozinha.
+
+    Sem isto, uma execução órfã fica no topo do Histórico para sempre e passa a
+    ser "a última execução" — escondendo a última que concluiu de verdade em
+    tudo que consulta o topo da lista (relatório, unificação/exportação,
+    resumo). Foi exatamente o que quebrou o envio ao invertexto: dois runs
+    órfãos vazios escondiam a execução com 74 imagens.
+
+    A mensagem registra que a marcação foi automática, para não se confundir
+    com uma falha real de processamento.
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """UPDATE processing_runs
+               SET status = 'erro',
+                   finalizado_em = ?,
+                   mensagem = COALESCE(mensagem, 'Execução interrompida (recuperada na inicialização)')
+               WHERE status = 'em_andamento'""",
+            (_now(),),
+        )
+        return cursor.rowcount
+
+
 def listar_todos_itens() -> List[Dict[str, Any]]:
     """Itens que formam o ESTADO ATUAL (visão mestre), dos mais recentes aos antigos.
 

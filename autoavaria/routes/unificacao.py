@@ -19,7 +19,6 @@ from ..services.export_service import (
     filtrar_colunas,
     renderizar_txt_compacto,
 )
-from ..services.relatorio_view import _construir_dados_relatorio
 from ..services.unification import (
     renderizar_secciones_como_texto,
     unificar_itens_avarias,
@@ -39,25 +38,33 @@ def _sem_colunas_internas(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _sheets_da_ultima_execucao():
-    """Monta um dict {sheet_name: DataFrame} a partir da ÚLTIMA execução
-    registrada no banco - a mesma fonte que a aba Relatório mostra na tela
-    (ver routes/relatorio.py). "Unificar Relatório" existe para dar uma
-    visão consolidada do que acabou de ser analisado, não do histórico
-    inteiro acumulado no Excel mestre - por isso não lê ARQUIVO_SAIDA_EXCEL.
+    """Sheets do relatório para unificação, a partir do BANCO.
 
-    Retorna None se ainda não houver nenhuma execução no banco (banco
-    recém-criado, por exemplo) - quem chama decide como sinalizar isso.
+    Antes lia a ÚLTIMA execução registrada. Isso quebrava em dois casos reais:
+    (1) uma execução interrompida/falha deixava uma "última execução" vazia, e
+    a unificação passava a mirar nada; (2) na tela de Relatório o botão
+    "Unificar relatório" promete o relatório INTEIRO, mas só recebia a última
+    execução.
+
+    Agora usa a visão mestre (`services/mestre.py`): todas as execuções,
+    deduplicadas, a mesma fonte do relatório que aparece na tela. O nome da
+    função ficou por compatibilidade — quem precisa de UMA execução é a tela de
+    Histórico, que monta as sheets a partir de `obter_execucao` diretamente.
+
+    Retorna None se não houver nada no banco (quem chama decide como sinalizar).
     """
-    execucoes = db_service.listar_execucoes(limite=1)
-    if not execucoes:
+    from ..services import mestre
+
+    secoes = mestre.obter_secoes_mestre()
+    if not secoes:
         return None
 
-    execucao = db_service.obter_execucao(execucoes[0]["id"])
-    dados = _construir_dados_relatorio(execucao["itens"]) if execucao else {}
-
     return {
-        categoria: pd.DataFrame(info["dados"], columns=info["colunas"])
-        for categoria, info in dados.items()
+        categoria: pd.DataFrame(
+            [{c: linha.get(c) for c in info["colunas"]} for linha in info["dados"]],
+            columns=info["colunas"],
+        )
+        for categoria, info in secoes.items()
     }
 
 

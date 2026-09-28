@@ -106,6 +106,7 @@ def create_app():
     configure_logging()
     ensure_directories()
     db_service.init_db()
+    db_service.recuperar_execucoes_orfas()
     db_service.backfill_relatorios_unificados(RESULTADOS_DIR)
     campo_migration.executar_migracao_campos()
     try:
