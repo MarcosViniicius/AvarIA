@@ -7,7 +7,7 @@
 Sistema Flask para registrar avarias de mercadorias a partir de fotos + texto do WhatsApp.
 Gera relatório Excel/TXT separando itens em **Avaria**, **Uso Interno** e **Erro**.
 
-Fluxo: `Upload/ZIP → imagens_para_analisar/ + conversa.txt → pipeline (lotes) → Excel mestre + SQLite → edição → unificação/exportação`.
+Fluxo: `Upload/ZIP → imagens_para_analisar/ + conversa.txt → pipeline (lotes) → SQLite (fonte da verdade) → edição → unificação/exportação (Excel/TXT sob demanda)`.
 
 ## 2. Comandos
 
@@ -16,7 +16,7 @@ python -m venv venv && .\venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 pip install -r requirements-dev.txt              # testes
 python app.py                                    # http://localhost:5000
-python -m pytest -q                              # 371 testes, ~22s
+python -m pytest -q                              # 590 testes, ~35s
 python -m pytest tests/test_barcode.py -q
 python -m pytest tests/test_classificacao_imagens.py tests/test_processamento_backend.py -q
 ```
@@ -37,12 +37,13 @@ autoavaria/services/
   extraction_engines.py         → MotorIA / MotorCodigoBarras / MotorHibrido (mesmo contrato de saída)
   conversa.py                   → parser WhatsApp → ContextoImagem(textos, quantidade)
   catalogo.py                   → tradução código→produto, preco_kg interno, aprendizado, revisão, expiração
-  extraction_pipeline.py        → orquestração: lotes, ThreadPool, persistência por lote, versionamento, reanálise
-  excel_report.py               → merge incremental no Excel mestre (escrita atômica)
+  extraction_pipeline.py        → orquestração: lotes, ThreadPool, persistência por lote (SÓ no banco), versionamento, reanálise
+  mestre.py                     → visão MESTRE a partir do banco: todas as execuções deduplicadas, versão mais recente por linhagem (a fonte do relatório e do export)
+  excel_report.py               → geração de xlsx por execução (legado do mestre; o mestre agora é gerado sob demanda do banco)
   export_service.py             → ÚNICO escritor xlsx/txt (detalhado vs compacto)
   unification.py                → funções PURAS de agrupamento (Avarias por nome, Uso Interno por código)
   db.py                         → SQLite: processing_runs, report_items, unified_reports, token_usage, catalogo_*
-  reports.py                    → GerenciadorErros (só aba Erros, legado de nome)
+  reports.py                    → GerenciadorErros (lê/grava erros no BANCO; nome legado)
   report_editing.py / relatorio_view.py / execucao_export.py / campo_migration.py / stats.py / maintenance.py / image_archive.py / app_state.py / config_service.py / optimization.py
 autoavaria/routes/         → blueprints finos: upload, processing, relatorio, historico, erros, edicao, unificacao, dashboard, manutencao, logs, configuracoes, ai_config
 ```
@@ -56,8 +57,8 @@ autoavaria/routes/         → blueprints finos: upload, processing, relatorio, 
 5. **Peso plausível 0,02–30 kg.** `catalogo.aprender_preco_kg()` (`catalogo.py:199`) rejeita fora da faixa e abre revisão em vez de aprender.
 6. **Preço/kg expira.** `esta_desatualizado()` (`catalogo.py:236`, padrão 30 dias): híbrido revalida com IA mesmo resolvido localmente.
 7. **EAN-13 exige DV válido.** `ean13_valido()` (`barcode.py:88`). IA com DV quebrado é descartada; histórico com DV inválido não entra no catálogo (`catalogo.py:295`).
-8. **Ordem gravar-antes-de-marcar.** `extraction_pipeline.py:247`: Excel+DB por lote → `registrar_log` → arquivar imagem. Erro fica pendente para reanálise; nunca arquive erro como sucesso.
-9. **Reanálise seletiva preserva versão completa.** `reanalisar_execucao(categorias|item_ids)`: só a seleção vai para a IA; o resto é copiado intacto para a nova versão. No mestre (sem execução), `reanalisar_selecao_mestre(imagens|categorias)` substitui só as linhas daquelas imagens.
+8. **SQLite é a fonte da verdade; Excel é export.** O pipeline grava SÓ no banco (`_persistir_lote`); o `.xlsx` é gerado sob demanda a partir de `mestre.py` (rotas de download). Nunca leia o Excel para decidir conteúdo. Ordem: gravar no banco → `registrar_log` → arquivar imagem. Erro fica pendente para reanálise; nunca arquive erro como sucesso.
+9. **Reanálise seletiva preserva versão completa.** `reanalisar_execucao(categorias|item_ids)`: só a seleção vai para a IA; o resto é copiado intacto para a nova versão. No mestre (sem execução), `reanalisar_selecao_mestre(imagens|categorias)` substitui só as linhas daquelas imagens (via `db.excluir_itens_por_caminho`). A visão mestre mostra apenas a versão mais recente de cada linhagem (`raiz_execucao_id`).
 10. **Checkbox de seleção é a última coluna.** Nas tabelas com reanálise seletiva, a coluna ✓ vem DEPOIS das colunas de dados (nunca antes): os índices `data-column` da ordenação não podem deslocar.
 11. **Unificação é pura e tem chaves diferentes.** Avarias agrupa por **nome normalizado** (soma kg ou conta un); Uso Interno agrupa **só por código de barras** (`unification.py:141/245`). Sem código válido → cada linha própria.
 12. **Paths só via `core/paths.py`.** Não hardcode `imagens_para_analisar`, `resultados/`, etc. Suporte Vercel (`/tmp`) já tratado lá.
@@ -78,7 +79,7 @@ Motor → `{arquivo: {tipo: Avaria|Uso Interno|Erro|Misto, itens: [{produto, pes
 - Use `tmp_db` para qualquer coisa que toque em `catalogo`/`db`.
 - Imagens sintéticas: `zxingcpp.create_barcode(...)` (ver `test_barcode.py:12`); pule com `pytest.importorskip` se deps ausentes.
 - AI: `MagicMock` provider + patch em `ai_extraction.extrair_dados_de_lote`.
-- Rode a suíte completa antes de abrir PR. Alvo: sem regressão nos 371 testes existentes.
+- Rode a suíte completa antes de abrir PR. Alvo: sem regressão nos 590 testes existentes.
 
 ## 7. Pitfalls conhecidos
 
