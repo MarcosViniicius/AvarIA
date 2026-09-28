@@ -148,20 +148,27 @@ class TestProcessarComForcar:
         assert chamadas["forcar"] is True
 
 
-def test_pipeline_com_falha_nao_vira_sucesso_por_excel_antigo(monkeypatch, tmp_path):
+def test_pipeline_com_falha_nao_vira_sucesso_por_dados_antigos(monkeypatch, tmp_path, tmp_db):
     import autoavaria.services.extraction_pipeline as pipeline
+    from autoavaria.services import db
+
+    # Já existe uma execução com dados no banco (estado anterior)...
+    run = db.iniciar_execucao("processamento", imagens_total=1)
+    db.registrar_itens(run, "Avarias", [
+        {"Produto": "ANTIGO", "Quantidade": 1, "Caminho da Imagem": "x.jpg"}
+    ])
+    db.finalizar_execucao(run, "concluido", avarias=1)
 
     pasta_imagens = tmp_path / "imagens"
     pasta_imagens.mkdir()
     (pasta_imagens / "IMG-1.jpg").write_bytes(b"imagem")
-    arquivo_excel_antigo = tmp_path / "Relatorio_Mestre_Produtos.xlsx"
-    arquivo_excel_antigo.write_bytes(b"relatorio anterior")
 
     monkeypatch.setattr(processing_route, "DIRETORIO_IMAGENS", str(pasta_imagens))
-    monkeypatch.setattr(processing_route, "ARQUIVO_SAIDA_EXCEL", str(arquivo_excel_antigo))
     monkeypatch.setattr(
         processing_route, "verificar_e_corrigir_configuracao", lambda modo=None: (True, "ok")
     )
+    # ...mas a execução atual FALHOU: não pode virar sucesso por causa do que já
+    # estava gravado antes.
     monkeypatch.setattr(pipeline, "main", lambda modo=None, callback_progresso=None: False)
     monkeypatch.delenv("VERCEL", raising=False)
 

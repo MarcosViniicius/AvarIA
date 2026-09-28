@@ -17,38 +17,39 @@ from . import db
 
 
 def _iniciais_do_relatorio() -> Dict[str, Any]:
-    """Existência, data e contagem por categoria do relatório mestre."""
-    existe = ARQUIVO_SAIDA_EXCEL.exists()
+    """Existência, data e contagem por categoria do relatório mestre.
+
+    A contagem vem da visão mestre do BANCO (services/mestre.py): é o dado real
+    que as telas e o export mostram. O `.xlsx` é um export sob demanda — pode
+    nem existir, e se existir pode estar defasado; usá-lo para contar daria
+    números errados.
+    """
+    from . import mestre
+
+    por_categoria = mestre.contar_por_categoria()
     info: Dict[str, Any] = {
-        "existe": existe,
+        "existe": bool(por_categoria),
         "caminho": str(ARQUIVO_SAIDA_EXCEL),
         "atualizado_em": None,
-        "total_itens": 0,
-        "por_categoria": {},
+        "total_itens": sum(por_categoria.values()),
+        "por_categoria": por_categoria,
     }
-    if not existe:
-        return info
 
+    # Data do último processamento (do banco) — não a do arquivo, que agora só
+    # reflete a última vez que alguém exportou.
     try:
         from datetime import datetime
 
-        info["atualizado_em"] = datetime.fromtimestamp(
-            ARQUIVO_SAIDA_EXCEL.stat().st_mtime
-        ).strftime("%d/%m/%Y %H:%M")
-    except OSError:
-        pass
-
-    try:
-        from .report_editing import carregar_todas_sheets
-
-        sheets = carregar_todas_sheets(str(ARQUIVO_SAIDA_EXCEL))
-        por_categoria = {
-            nome: len(df) for nome, df in sheets.items() if df is not None and not df.empty
-        }
-        info["por_categoria"] = por_categoria
-        info["total_itens"] = sum(por_categoria.values())
+        with db.get_connection() as conn:
+            linha = conn.execute(
+                "SELECT MAX(finalizado_em) AS ultimo FROM processing_runs WHERE finalizado_em IS NOT NULL"
+            ).fetchone()
+        if linha and linha["ultimo"]:
+            info["atualizado_em"] = datetime.strptime(
+                linha["ultimo"][:19], "%Y-%m-%d %H:%M:%S"
+            ).strftime("%d/%m/%Y %H:%M")
     except Exception as e:
-        print(f"⚠️ Não foi possível ler o relatório para o resumo de dados: {e}")
+        print(f"⚠️ Não foi possível obter a data do último processamento: {e}")
 
     return info
 

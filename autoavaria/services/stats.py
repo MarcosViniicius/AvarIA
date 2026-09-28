@@ -11,19 +11,16 @@ from datetime import datetime
 
 import pandas as pd
 
-from .report_editing import carregar_todas_sheets
 from ..core.paths import (
     UPLOAD_FOLDER as UPLOAD_FOLDER_PATH,
     LOG_PROCESSADOS_FILE as LOG_PROCESSADOS_FILE_PATH,
     LOG_CONSUMO_FILE as LOG_CONSUMO_FILE_PATH,
-    ARQUIVO_SAIDA_EXCEL as ARQUIVO_SAIDA_EXCEL_PATH,
     ARCHIVE_FOLDER as ARCHIVE_FOLDER_PATH,
 )
 
 DIRETORIO_IMAGENS = str(UPLOAD_FOLDER_PATH)
 LOG_PROCESSADOS_FILE = str(LOG_PROCESSADOS_FILE_PATH)
 LOG_CONSUMO_FILE = str(LOG_CONSUMO_FILE_PATH)
-ARQUIVO_SAIDA_EXCEL = str(ARQUIVO_SAIDA_EXCEL_PATH)
 ARCHIVE_FOLDER = str(ARCHIVE_FOLDER_PATH)
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
 
@@ -155,8 +152,12 @@ def obter_estatisticas():
             tokens_hoje if tokens_hoje is not None else stats["tokens_consumidos_hoje"]
         )
 
-        # Verifica se existe relatório
-        stats["relatorio_existe"] = os.path.exists(ARQUIVO_SAIDA_EXCEL)
+        # Existe relatório se o BANCO tem itens (fonte da verdade). O .xlsx é
+        # export sob demanda e pode não existir sem que isso signifique
+        # "sem relatório".
+        from . import mestre
+
+        stats["relatorio_existe"] = bool(mestre.contar_por_categoria())
 
     except Exception as e:
         print(f"Erro ao obter estatísticas: {e}")
@@ -237,33 +238,36 @@ def _tokens_de_hoje_do_arquivo():
 
 
 def obter_resultados_recentes():
-    """Obtém os resultados mais recentes do relatório."""
+    """Últimos itens de cada categoria, para o dashboard.
+
+    Vem da visão mestre do BANCO (services/mestre.py) - a mesma que alimenta o
+    relatório e o export. Antes lia o Excel mestre, que podia divergir do banco.
+    """
     resultados = {"avarias": [], "uso_interno": [], "erros": []}
 
     try:
-        if os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            # Ler as últimas 10 entradas de cada tipo
-            sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
+        from . import mestre
 
-            if "Avarias" in sheets:
-                df_avarias = sheets["Avarias"].tail(10)
-                # Tratar valores NaN
-                df_avarias = df_avarias.fillna("-")
-                resultados["avarias"] = df_avarias.to_dict("records")
-
-            if "Uso Interno" in sheets:
-                df_uso = sheets["Uso Interno"].tail(10)
-                # Tratar valores NaN
-                df_uso = df_uso.fillna("-")
-                resultados["uso_interno"] = df_uso.to_dict("records")
-
-            if "Erros de Análise" in sheets:
-                df_erros = sheets["Erros de Análise"].tail(10)
-                # Tratar valores NaN
-                df_erros = df_erros.fillna("-")
-                resultados["erros"] = df_erros.to_dict("records")
-
+        secoes = mestre.obter_secoes_mestre()
+        mapa = {
+            "Avarias": "avarias",
+            "Uso Interno": "uso_interno",
+            "Erros de Análise": "erros",
+        }
+        for categoria, chave in mapa.items():
+            info = secoes.get(categoria)
+            if not info:
+                continue
+            # A visão mestre vem da execução mais NOVA para a mais antiga, então
+            # os "recentes" são o começo da lista. Reverto para old->new, a mesma
+            # ordem que o dashboard assumia quando lia o Excel (o template usa
+            # `[-5:]`).
+            recentes = list(reversed(info["dados"][:10]))
+            resultados[chave] = [
+                {k: (v if v not in (None, "") else "-") for k, v in linha.items()}
+                for linha in recentes
+            ]
     except Exception as e:
-        print(f"Erro ao ler resultados: {e}")
+        print(f"Erro ao obter resultados recentes: {e}")
 
     return resultados

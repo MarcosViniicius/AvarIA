@@ -16,7 +16,6 @@ from .blueprint import web_bp as app
 from .context import (
     ALLOWED_EXTENSIONS,
     ARCHIVE_FOLDER,
-    ARQUIVO_SAIDA_EXCEL,
     BASE_PATH,
     DIRETORIO_IMAGENS,
     EXTENSOES_IMAGEM,
@@ -29,7 +28,6 @@ from ..services.config_service import (
 )
 from ..services.extraction import ExtratorArquivos
 from ..services.extraction_pipeline import listar_imagens_pendentes
-from ..services.report_editing import carregar_todas_sheets
 
 
 def allowed_file(filename):
@@ -396,26 +394,24 @@ def processar_em_background(modo_extracao=None, resultado_extracao_previo=None, 
             app_state.progresso_atual["status"] = "✅ Processamento concluído com sucesso!"
             app_state.progresso_atual["logs"].append("✅ Análise concluída com sucesso!")
 
-            # Verificar resultados
-            if os.path.exists(ARQUIVO_SAIDA_EXCEL):
-                app_state.progresso_atual["logs"].append(
-                    f"📄 Relatório Excel gerado: {ARQUIVO_SAIDA_EXCEL}"
-                )
+            # Contar resultados a partir do BANCO (fonte da verdade). O Excel
+            # é export sob demanda e não é mais escrito a cada execução.
+            try:
+                from ..services import mestre
 
-                # Contar resultados
-                try:
-                    sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-                    for sheet_name, df in sheets.items():
-                        if not df.empty:
-                            app_state.progresso_atual["logs"].append(
-                                f"📊 {sheet_name}: {len(df)} registros"
-                            )
-                except Exception as e:
+                contagem = mestre.contar_por_categoria()
+                if contagem:
                     app_state.progresso_atual["logs"].append(
-                        f"⚠️ Erro ao ler estatísticas do relatório: {e}"
+                        "📄 Resultados gravados no banco (export disponível na tela de Relatório)"
                     )
-            else:
-                app_state.progresso_atual["logs"].append("⚠️ Relatório não foi gerado")
+                for sheet_name, total in contagem.items():
+                    app_state.progresso_atual["logs"].append(
+                        f"📊 {sheet_name}: {total} registros"
+                    )
+            except Exception as e:
+                app_state.progresso_atual["logs"].append(
+                    f"⚠️ Erro ao contar resultados: {e}"
+                )
         else:
             if app_state.processamento_cancelado:
                 app_state.progresso_atual["status"] = "⚠️ Processamento cancelado pelo usuário"

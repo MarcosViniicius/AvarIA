@@ -29,14 +29,7 @@ from ..core.paths import (
 )
 from . import ai_extraction, catalogo, conversa, db, image_archive
 from .ai import construir_provedor_de_config, obter_api_key_do_provedor
-from .excel_report import salvar_relatorio_excel
 from .extraction_engines import MODO_IA, MODO_SEM_IA, MODOS_DISPONIVEIS, construir_motor
-from .report_editing import (
-    carregar_todas_sheets,
-    fazer_backup,
-    remover_linhas_por_caminho_imagem,
-    salvar_todas_sheets,
-)
 from .reports import criar_gerenciador
 
 EXTENSOES_IMAGEM = (".png", ".jpg", ".jpeg")
@@ -377,16 +370,15 @@ def _resolver_caminho_imagem(caminho_registrado: str) -> Optional[str]:
 
 
 def _persistir_lote(run_id: Optional[int], avarias, usos_internos, erros) -> None:
-    """Grava os resultados de UM lote no Excel e no banco.
+    """Grava os resultados de UM lote no BANCO.
 
-    Chamado a cada lote (em vez de só no fim de tudo) para que uma
-    interrupção no meio do processamento não descarte o trabalho já feito
-    nem deixe imagens marcadas como processadas sem dado correspondente.
+    O banco é a fonte da verdade (ver services/mestre.py); o Excel virou export
+    sob demanda. Chamado a cada lote (em vez de só no fim de tudo) para que uma
+    interrupção no meio do processamento não descarte o trabalho já feito nem
+    deixe imagens marcadas como processadas sem dado correspondente.
     """
     if not (avarias or usos_internos or erros):
         return
-
-    salvar_relatorio_excel(str(ARQUIVO_SAIDA_EXCEL), avarias, usos_internos, erros)
 
     if run_id is not None:
         db.registrar_itens(run_id, "Avarias", avarias)
@@ -696,7 +688,6 @@ def reanalisar_erros(
                         novas_avarias, novos_usos_internos, novos_erros,
                     )
 
-                    salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos_internos, novos_erros)
                     if novos_erros:
                         erros_da_execucao.extend(novos_erros)
                         ainda_com_erro += 1
@@ -935,10 +926,8 @@ def reanalisar_execucao(
             if item.get("observacao_mensagem") and item["observacao_mensagem"] not in ("Nenhuma", "N/A")
         }
 
-        caminhos_originais = set(itens_por_caminho.keys())
         novas_avarias, novos_usos_internos, novos_erros = [], [], []
         tokens_totais = 0
-
         for idx, item in enumerate(itens_unicos, 1):
             caminho_registrado = item["caminho_imagem"]
             nome_arquivo = os.path.basename(caminho_registrado)
@@ -975,16 +964,9 @@ def reanalisar_execucao(
             if idx < len(itens_unicos):
                 time.sleep(request_delay)
 
-        # Só remove as linhas antigas do Excel DEPOIS de ter os novos
-        # resultados prontos (nem que seja tudo erro) - uma queda no meio do
-        # processo nunca deixa o relatório sem as linhas de uma versão válida.
-        fazer_backup(arquivo_excel)
-        sheets_atuais = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
-        sheets_sem_antigas = remover_linhas_por_caminho_imagem(sheets_atuais, caminhos_originais)
-        if sheets_sem_antigas:
-            salvar_todas_sheets(arquivo_excel, sheets_sem_antigas)
-
-        salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos_internos, novos_erros)
+        # A nova versão vive SÓ no banco (fonte da verdade). A versão antiga
+        # continua no banco com o run antigo - nada é apagado, o versionamento
+        # é o próprio histórico. O Excel é export sob demanda: não é tocado.
         db.registrar_itens(novo_run_id, "Avarias", novas_avarias)
         db.registrar_itens(novo_run_id, "Uso Interno", novos_usos_internos)
         db.registrar_itens(novo_run_id, "Erros de Análise", novos_erros)
@@ -1055,16 +1037,20 @@ def reanalisar_selecao_mestre(
             if nome and nome not in alvos:
                 alvos.append(nome)
     elif categorias_filtro is not None:
-        sheets = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
+        # Deriva as imagens da visão mestre do BANCO (a mesma que as telas
+        # mostram), não do Excel — que agora é só um export e pode nem existir.
+        from . import mestre
+
+        secoes = mestre.obter_secoes_mestre()
         for sheet in categorias_filtro:
-            df = sheets.get(sheet)
-            if df is None or df.empty:
+            info = secoes.get(sheet)
+            if not info:
                 continue
-            for _, row in df.iterrows():
-                caminho = row.get("Caminho da Imagem")
+            for linha in info["dados"]:
+                caminho = linha.get("Caminho da Imagem")
                 nome = os.path.basename(str(caminho).strip()) if isinstance(caminho, str) and caminho.strip() not in ("", "N/A", "-", "nan") else ""
                 if not nome:
-                    arquivo = row.get("Arquivo")
+                    arquivo = linha.get("Arquivo")
                     nome = os.path.basename(str(arquivo).strip()) if isinstance(arquivo, str) and arquivo.strip() else ""
                 if nome and nome not in alvos:
                     alvos.append(nome)
@@ -1084,7 +1070,6 @@ def reanalisar_selecao_mestre(
         corrigidos = ainda_com_erro = tokens_totais = 0
         avarias_total = usos_total = 0
         detalhes, erros_exec = [], []
-        fazer_backup(arquivo_excel)
 
         for idx, nome_arquivo in enumerate(alvos, 1):
             if callback_progresso:
@@ -1106,11 +1091,11 @@ def reanalisar_selecao_mestre(
                     nome_arquivo, resultado, mensagens_por_imagem, os.path.dirname(caminho_imagem),
                     novas_avarias, novos_usos, novos_erros,
                 )
-                sheets_atuais = carregar_todas_sheets(arquivo_excel) if os.path.exists(arquivo_excel) else {}
-                sheets_limpas = remover_linhas_por_caminho_imagem(sheets_atuais, {caminho_imagem, os.path.join(diretorio_imagens, nome_arquivo)})
-                if sheets_limpas:
-                    salvar_todas_sheets(arquivo_excel, sheets_limpas)
-                salvar_relatorio_excel(arquivo_excel, novas_avarias, novos_usos, novos_erros)
+                # Substitui as linhas antigas desta imagem em TODAS as categorias
+                # e execuções (o mestre é a dedup de tudo). Feito DEPOIS de ter o
+                # resultado novo em mãos: uma falha no meio não deixa a imagem
+                # sem nenhuma versão.
+                db.excluir_itens_por_caminho({caminho_imagem, os.path.join(diretorio_imagens, nome_arquivo)})
 
                 if novos_erros and not (novas_avarias or novos_usos):
                     ainda_com_erro += 1

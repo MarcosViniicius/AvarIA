@@ -27,7 +27,6 @@ def test_processadas_nunca_excede_total(tmp_path, monkeypatch, tmp_db):
     monkeypatch.setattr(stats, "DIRETORIO_IMAGENS", str(pasta))
     monkeypatch.setattr(stats, "ARCHIVE_FOLDER", str(tmp_path / "arquivadas"))
     monkeypatch.setattr(stats, "LOG_PROCESSADOS_FILE", str(log))
-    monkeypatch.setattr(stats, "ARQUIVO_SAIDA_EXCEL", str(tmp_path / "nao_existe.xlsx"))
 
     resultado = stats.obter_estatisticas()
 
@@ -48,7 +47,6 @@ def test_pendentes_conta_so_o_que_nao_esta_no_log(tmp_path, monkeypatch, tmp_db)
     monkeypatch.setattr(stats, "DIRETORIO_IMAGENS", str(pasta))
     monkeypatch.setattr(stats, "ARCHIVE_FOLDER", str(tmp_path / "arquivadas"))
     monkeypatch.setattr(stats, "LOG_PROCESSADOS_FILE", str(log))
-    monkeypatch.setattr(stats, "ARQUIVO_SAIDA_EXCEL", str(tmp_path / "nao_existe.xlsx"))
 
     resultado = stats.obter_estatisticas()
 
@@ -61,7 +59,6 @@ def test_sem_pasta_nem_log_devolve_zeros(tmp_path, monkeypatch, tmp_db):
     monkeypatch.setattr(stats, "DIRETORIO_IMAGENS", str(tmp_path / "nao_existe"))
     monkeypatch.setattr(stats, "ARCHIVE_FOLDER", str(tmp_path / "arquivadas"))
     monkeypatch.setattr(stats, "LOG_PROCESSADOS_FILE", str(tmp_path / "nao_existe.txt"))
-    monkeypatch.setattr(stats, "ARQUIVO_SAIDA_EXCEL", str(tmp_path / "nao_existe.xlsx"))
 
     resultado = stats.obter_estatisticas()
 
@@ -83,7 +80,6 @@ def test_conta_imagens_arquivadas_como_processadas(tmp_path, monkeypatch, tmp_db
     monkeypatch.setattr(stats, "DIRETORIO_IMAGENS", str(pendentes))
     monkeypatch.setattr(stats, "ARCHIVE_FOLDER", str(arquivadas))
     monkeypatch.setattr(stats, "LOG_PROCESSADOS_FILE", str(log))
-    monkeypatch.setattr(stats, "ARQUIVO_SAIDA_EXCEL", str(tmp_path / "nao_existe.xlsx"))
 
     resultado = stats.obter_estatisticas()
     assert resultado["imagens_total"] == 2

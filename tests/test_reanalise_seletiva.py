@@ -47,14 +47,12 @@ def execucao_mista(tmp_path, monkeypatch, tmp_db):
         "Caminho da Imagem": str(pasta / "RUIM.jpg"),
         "Ver Imagem": str(pasta / "RUIM.jpg"),
     }]
-    pipeline.salvar_relatorio_excel(str(excel), avarias, [], erros)
 
     run_id = tmp_db.iniciar_execucao("processamento", imagens_total=2)
     tmp_db.registrar_itens(run_id, "Avarias", avarias)
     tmp_db.registrar_itens(run_id, "Erros de Análise", erros)
     tmp_db.finalizar_execucao(run_id, "concluido", avarias=1, uso_interno=0, erros=1)
 
-    monkeypatch.setattr(pipeline, "ARQUIVO_SAIDA_EXCEL", excel)
     monkeypatch.setattr(pipeline, "carregar_configuracao", _fake_config)
     monkeypatch.setattr(pipeline, "construir_provedor_de_config", lambda cfg: _ProviderFalso())
 
@@ -115,14 +113,15 @@ class TestReanalisarExecucaoSeletiva:
         produtos = sorted(i["produto"] for i in nova["itens"])
         assert "BOA.jpg-NOVO" in produtos  # reanalisou a avaria, não o erro
 
-    def test_excel_troca_so_linha_selecionada(self, execucao_mista):
-        from autoavaria.services.report_editing import carregar_todas_sheets
+    def test_mestre_troca_so_linha_selecionada(self, execucao_mista):
+        from autoavaria.services import mestre
 
         pipeline.reanalisar_execucao(execucao_mista["run_id"], categorias=["Erros de Análise"])
-        sheets = carregar_todas_sheets(str(execucao_mista["excel"]))
-        assert list(sheets["Avarias"]["Produto"]) == ["TOMATE", "RUIM.jpg-NOVO"]
-        erros_sheet = sheets.get("Erros de Análise")
-        assert erros_sheet is None or erros_sheet.empty  # linha de erro antiga saiu
+        secoes = mestre.obter_secoes_mestre()
+        # A visão mestre mostra a versão mais recente da linhagem: a avaria
+        # preservada + a linha reanalisada, e o erro antigo já não existe.
+        assert sorted(l["Produto"] for l in secoes["Avarias"]["dados"]) == ["RUIM.jpg-NOVO", "TOMATE"]
+        assert "Erros de Análise" not in secoes
 
     def test_categoria_invalida_levanta(self, execucao_mista):
         with pytest.raises(ValueError):
@@ -147,7 +146,7 @@ class TestReanalisarSelecaoMestre:
         assert res["sucesso"] is True
         assert res["total_arquivos"] == 1 and res["corrigidos"] == 1
 
-    def test_por_categoria_deriva_imagens_do_excel(self, execucao_mista):
+    def test_por_categoria_deriva_imagens_do_banco(self, execucao_mista):
         res = pipeline.reanalisar_selecao_mestre(
             categorias=["Erros de Análise"], diretorio_imagens=str(execucao_mista["pasta"]),
             arquivo_excel=str(execucao_mista["excel"]))

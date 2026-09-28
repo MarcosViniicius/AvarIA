@@ -1,18 +1,14 @@
-"""Testes de routes/edicao.py - foco na sincronização Excel -> banco.
+"""Testes de routes/edicao.py.
 
-Bug corrigido: editar/excluir/mover um item pela tela de edição (que atua só
-sobre o Excel mestre) não propagava para o banco (services/db.py), então o
-Histórico e as exportações por execução continuavam mostrando o valor
-antigo depois de uma correção. A correlação entre uma linha do Excel (só
-tem posição, sem id estável) e o item correspondente no banco é feita por
-categoria + Caminho da Imagem + demais campos (db.buscar_item_por_caminho).
+A tela de edição lê a visão mestre do BANCO (services/mestre.py) e cada edição
+grava direto nos itens (`report_items`). A linha carrega `id_linha` = id do item
+no banco; uma mesma linha exibida pode corresponder a vários itens (mesma
+imagem em execuções diferentes), e a edição é propagada para todos.
 """
 
-import pandas as pd
 import pytest
 
 from autoavaria import create_app
-from autoavaria.routes import edicao as edicao_route
 from autoavaria.services import db
 
 
@@ -25,31 +21,6 @@ def app():
 
 @pytest.fixture
 def ambiente(app, tmp_path, monkeypatch, tmp_db):
-    excel = tmp_path / "Relatorio.xlsx"
-    monkeypatch.setattr(edicao_route, "ARQUIVO_SAIDA_EXCEL", str(excel))
-
-    df_avarias = pd.DataFrame(
-        [
-            {
-                "Produto": "TOMATE", "Quantidade": 1, "Peso": "1,5kg",
-                "Observação da Mensagem": "Nenhuma",
-                "Caminho da Imagem": "a.jpg", "Ver Imagem": "a.jpg",
-            }
-        ]
-    )
-    df_uso_interno = pd.DataFrame(
-        [
-            {
-                "Produto": "SACO DE LIXO", "Quantidade": 2, "Marca": "N/A",
-                "Código de Barras": "789", "Observação da Mensagem": "Nenhuma",
-                "Caminho da Imagem": "b.jpg", "Ver Imagem": "b.jpg",
-            }
-        ]
-    )
-    with pd.ExcelWriter(excel, engine="openpyxl") as writer:
-        df_avarias.to_excel(writer, sheet_name="Avarias", index=False)
-        df_uso_interno.to_excel(writer, sheet_name="Uso Interno", index=False)
-
     run_id = db.iniciar_execucao("processamento", imagens_total=2)
     db.registrar_itens(
         run_id, "Avarias",
@@ -62,7 +33,11 @@ def ambiente(app, tmp_path, monkeypatch, tmp_db):
           "Código de Barras": "789", "Observação da Mensagem": "Nenhuma",
           "Caminho da Imagem": "b.jpg"}],
     )
-    return {"run_id": run_id}
+    return {
+        "run_id": run_id,
+        "id_avaria": db.buscar_item_por_caminho("Avarias", "a.jpg"),
+        "id_uso": db.buscar_item_por_caminho("Uso Interno", "b.jpg"),
+    }
 
 
 class TestSalvarEdicaoSincronizaBanco:
@@ -70,7 +45,8 @@ class TestSalvarEdicaoSincronizaBanco:
         client = app.test_client()
         resposta = client.post(
             "/salvar_edicao",
-            json={"sheet_name": "Avarias", "linha_id": 0, "campo": "Produto", "novo_valor": "TOMATE ITALIANO"},
+            json={"sheet_name": "Avarias", "linha_id": ambiente["id_avaria"],
+                  "campo": "Produto", "novo_valor": "TOMATE ITALIANO"},
         )
         assert resposta.get_json()["success"] is True
 
@@ -82,7 +58,7 @@ class TestSalvarEdicaoSincronizaBanco:
         resposta = client.post(
             "/salvar_edicao_completa",
             json={
-                "sheet_name": "Uso Interno", "linha_id": 0,
+                "sheet_name": "Uso Interno", "linha_id": ambiente["id_uso"],
                 "dados_linha": {"Produto": "SACO DE LIXO 100L", "Marca": "PLASTPACK"},
             },
         )
@@ -99,14 +75,20 @@ class TestExcluirLinhaSincronizaBanco:
         client = app.test_client()
         assert db.buscar_item_por_caminho("Avarias", "a.jpg") is not None
 
-        resposta = client.post("/excluir_linha", json={"sheet_name": "Avarias", "linha_id": 0})
+        resposta = client.post(
+            "/excluir_linha",
+            json={"sheet_name": "Avarias", "linha_id": ambiente["id_avaria"]},
+        )
         assert resposta.get_json()["success"] is True
 
         assert db.buscar_item_por_caminho("Avarias", "a.jpg") is None
 
     def test_exclusao_recalcula_contagem_da_execucao(self, app, ambiente):
         client = app.test_client()
-        client.post("/excluir_linha", json={"sheet_name": "Avarias", "linha_id": 0})
+        client.post(
+            "/excluir_linha",
+            json={"sheet_name": "Avarias", "linha_id": ambiente["id_avaria"]},
+        )
 
         execucao = db.obter_execucao(ambiente["run_id"])
         assert execucao["avarias"] == 0
@@ -117,7 +99,8 @@ class TestMoverItemSincronizaBanco:
         client = app.test_client()
         resposta = client.post(
             "/mover_item",
-            json={"sheet_origem": "Avarias", "sheet_destino": "Uso Interno", "linha_id": 0},
+            json={"sheet_origem": "Avarias", "sheet_destino": "Uso Interno",
+                  "linha_id": ambiente["id_avaria"]},
         )
         assert resposta.get_json()["success"] is True
 

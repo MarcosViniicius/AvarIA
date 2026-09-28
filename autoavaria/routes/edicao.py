@@ -3,46 +3,53 @@ Rotas de edição de dados do relatório: `/editar_dados`, `/salvar_edicao`,
 `/salvar_edicao_completa`, `/excluir_linha`, `/mover_item`,
 `/adicionar_linha`.
 
-A leitura/backup/gravação do Excel (comuns às 5 rotas de mutação) foi
-extraída para ``autoavaria.services.report_editing``; a lógica específica de
-cada rota permanece aqui.
+O SQLite é a FONTE da verdade (ver services/mestre.py). A tela lê a visão
+mestre do banco e cada edição grava direto nos itens (`report_items`). Não há
+mais um Excel intermediário sendo lido/reescrito a cada clique: o `.xlsx` é só
+export, gerado sob demanda.
+
+A linha da tela carrega `id_linha` — o id do item no banco — então as rotas
+sabem exatamente qual item editar. Uma mesma linha exibida pode corresponder a
+vários itens (a mesma imagem processada em execuções diferentes); nesse caso a
+edição é propagada para todos os equivalentes, via
+`db.buscar_itens_por_caminho`.
 """
 
-import os
-from datetime import datetime
-
-import pandas as pd
 from flask import flash, jsonify, make_response, redirect, render_template, request, url_for
 
 from .blueprint import web_bp as app
-from .context import ARQUIVO_SAIDA_EXCEL
-from ..services import db
-from ..services.report_editing import (
-    carregar_todas_sheets,
-    fazer_backup,
-    salvar_todas_sheets,
-)
+from ..services import db, mestre
+from ..services.relatorio_view import _construir_registro
+
+
+def _item_e_valores(linha_id, sheet_name):
+    """(item bruto, linha no formato das colunas da tela) a partir do id.
+
+    Devolve ``(None, None)`` se o id não existir mais (linha removida em outra
+    aba, banco reiniciado, etc.).
+    """
+    item = db.obter_item(linha_id)
+    if not item:
+        return None, None
+    return item, _construir_registro(sheet_name, item)
 
 
 def _sincronizar_edicao_no_banco(sheet_name: str, valores_originais: dict, campo: str, novo_valor) -> int:
-    """Propaga uma edição de campo do Excel para o(s) item(ns) no banco.
+    """Propaga uma edição de campo para o(s) item(ns) correspondentes no banco.
 
     Devolve quantos itens foram atualizados. Atualiza TODAS as correspondências
     exatas: a mesma imagem processada em várias execuções gera linhas
-    equivalentes (uma por execução), e editar uma linha do Excel deve refletir
-    em todas elas — antes o código exigia uma única linha e desistia em 22% dos
-    casos, deixando o Histórico desatualizado em silêncio.
-
-    Sem isso, editar um item aqui corrigia só o Excel; o Histórico e as
-    exportações por execução continuavam mostrando o valor antigo.
+    equivalentes (uma por execução), e editar uma delas deve refletir em todas.
     """
     try:
         ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
+        if not ids:
+            return 0
         return db.atualizar_itens_campo(ids, campo, novo_valor)
     except Exception as e:
-        print(f"⚠️ Não foi possível sincronizar a edição com o banco: {e}")
+        print(f"⚠️ Não foi possível salvar a edição no banco: {e}")
         return 0
 
 
@@ -52,9 +59,11 @@ def _sincronizar_edicao_completa_no_banco(sheet_name: str, valores_originais: di
         ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
+        if not ids:
+            return 0
         return db.atualizar_itens_completo(ids, dados_linha)
     except Exception as e:
-        print(f"⚠️ Não foi possível sincronizar a edição com o banco: {e}")
+        print(f"⚠️ Não foi possível salvar a edição no banco: {e}")
         return 0
 
 
@@ -63,12 +72,14 @@ def _sincronizar_exclusao_no_banco(sheet_name: str, valores_originais: dict) -> 
         ids = db.buscar_itens_por_caminho(
             sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
         )
+        if not ids:
+            return 0
         runs = db.excluir_itens(ids)
         for run_id in runs:
             db.recalcular_contagens(run_id)
         return len(ids)
     except Exception as e:
-        print(f"⚠️ Não foi possível sincronizar a exclusão com o banco: {e}")
+        print(f"⚠️ Não foi possível excluir no banco: {e}")
         return 0
 
 
@@ -83,79 +94,49 @@ def _sincronizar_movimentacao_no_banco(sheet_origem: str, sheet_destino: str, va
         db.atualizar_itens_completo(ids, nova_linha)
         return len(ids)
     except Exception as e:
-        print(f"⚠️ Não foi possível sincronizar a movimentação com o banco: {e}")
+        print(f"⚠️ Não foi possível mover no banco: {e}")
         return 0
 
 
 def _aviso_sincronizacao(afetados: int) -> str:
-    """Mensagem sobre o efeito no banco, para não haver alteração silenciosa.
+    """Mensagem quando a linha não pôde ser identificada de forma única.
 
-    Quando nada sincroniza, o usuário precisa saber: a edição valeu no Excel
-    (que é o que as telas de edição mostram), mas o Histórico continuará com o
-    valor antigo. Silêncio aqui já causou divergência percebida como bug.
+    Sem isso a falha seria silenciosa: o usuário veria "salvo", mas a linha
+    não teria mudado (ou teria mudado só parte das duplicatas).
     """
     if afetados > 0:
         return ""
     return (
-        " Atenção: não foi possível identificar esta linha no Histórico "
-        "(há itens diferentes associados à mesma imagem), então o Histórico "
-        "continua com o valor anterior — a alteração vale para o relatório."
+        " Atenção: não foi possível identificar esta linha de forma única "
+        "(há itens diferentes associados à mesma imagem), então nada foi "
+        "alterado."
     )
+
+
+def _colunas_da_categoria(sheet_name: str):
+    """Colunas de dados editáveis de uma categoria (sem 'Caminho da Imagem')."""
+    return mestre.COLUNAS_POR_CATEGORIA.get(sheet_name, [])
 
 
 @app.route("/editar_dados")
 def editar_dados():
-    """Página de edição de dados do relatório."""
+    """Página de edição de dados do relatório (visão mestre do banco)."""
     try:
-        # Tentar encontrar o arquivo em diferentes caminhos possíveis
-        caminhos_possiveis = [
-            ARQUIVO_SAIDA_EXCEL,
-            os.path.join(os.getcwd(), "resultados", "Relatorio_Mestre_Produtos.xlsx"),
-            "./resultados/Relatorio_Mestre_Produtos.xlsx"
-        ]
+        secoes = mestre.obter_secoes_mestre()
 
-        arquivo_encontrado = None
-        for caminho in caminhos_possiveis:
-            if os.path.exists(caminho):
-                arquivo_encontrado = caminho
-                break
-
-        if not arquivo_encontrado:
+        if not secoes:
             flash("Nenhum relatório encontrado para editar. Execute o processamento primeiro.", "warning")
             return redirect(url_for("configuracoes"))
 
-        # Verificar se o arquivo não está vazio
-        if os.path.getsize(arquivo_encontrado) == 0:
-            flash("O arquivo de relatório está vazio. Execute o processamento novamente.", "warning")
-            return redirect(url_for("configuracoes"))
-
-        # Ler o arquivo Excel
-        sheets = carregar_todas_sheets(arquivo_encontrado)
-
-        if not sheets:
-            flash("O relatório não contém planilhas válidas.", "warning")
-            return redirect(url_for("configuracoes"))
-
         dados = {}
-
-        for sheet_name, df in sheets.items():
-            if df is not None and not df.empty:
-                # Adicionar índice para edição
-                df = df.reset_index()
-                df["id_linha"] = df.index
-
-                # Tratar valores NaN para evitar erros no template
-                df = df.fillna("")  # Substitui NaN por string vazia
-
-                dados[sheet_name] = {
-                    "colunas": df.columns.tolist(),
-                    "dados": df.to_dict("records"),
-                    "total": len(df),
-                }
-
-        if not dados:
-            flash("O relatório não contém dados para editar. Todas as planilhas estão vazias.", "warning")
-            return redirect(url_for("configuracoes"))
+        for sheet_name, info in secoes.items():
+            dados[sheet_name] = {
+                # 'id_linha' entra na lista de colunas (mas é ocultado no
+                # template: não é um campo de dado, é o identificador da linha).
+                "colunas": info["colunas"] + ["id_linha"],
+                "dados": info["dados"],
+                "total": info["total"],
+            }
 
         response = make_response(render_template("editar_dados.html", dados=dados))
         # Evitar cache para garantir dados atualizados
@@ -164,15 +145,6 @@ def editar_dados():
         response.headers['Expires'] = '0'
         return response
 
-    except FileNotFoundError:
-        flash("Arquivo de relatório não encontrado.", "danger")
-        return redirect(url_for("configuracoes"))
-    except PermissionError:
-        flash("Sem permissão para acessar o arquivo de relatório.", "danger")
-        return redirect(url_for("configuracoes"))
-    except pd.errors.EmptyDataError:
-        flash("Arquivo de relatório está vazio ou corrompido.", "danger")
-        return redirect(url_for("configuracoes"))
     except Exception as e:
         print(f"Erro ao carregar dados para edição: {e}")
         flash(f"Erro ao carregar dados para edição: {str(e)}", "danger")
@@ -181,7 +153,7 @@ def editar_dados():
 
 @app.route("/salvar_edicao", methods=["POST"])
 def salvar_edicao():
-    """Salva as edições feitas nos dados."""
+    """Salva a edição de um único campo de uma linha."""
     try:
         data = request.json
         sheet_name = data.get("sheet_name")
@@ -193,11 +165,8 @@ def salvar_edicao():
             f"📝 Salvando edição: Sheet={sheet_name}, Linha={linha_id}, Campo={campo}, Valor={novo_valor}"
         )
 
-        # Validação mais detalhada
         if not sheet_name:
-            return jsonify(
-                {"success": False, "message": "Nome da planilha é obrigatório"}
-            )
+            return jsonify({"success": False, "message": "Nome da planilha é obrigatório"})
         if linha_id is None:
             return jsonify({"success": False, "message": "ID da linha é obrigatório"})
         if not campo:
@@ -205,83 +174,25 @@ def salvar_edicao():
         if novo_valor is None:
             novo_valor = ""  # Permitir valores vazios
 
-        # Verificar se arquivo existe
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            return jsonify(
-                {"success": False, "message": "Arquivo de relatório não encontrado"}
-            )
+        _, valores_originais = _item_e_valores(linha_id, sheet_name)
+        if valores_originais is None:
+            return jsonify({"success": False, "message": "Linha não encontrada"})
 
-        # Ler arquivo Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
+        colunas_validas = _colunas_da_categoria(sheet_name)
+        if colunas_validas and campo not in colunas_validas:
+            return jsonify({
+                "success": False,
+                "message": f'Campo "{campo}" não encontrado. Campos disponíveis: {colunas_validas}',
+            })
 
-        if sheet_name not in sheets:
-            return jsonify(
-                {"success": False, "message": f'Planilha "{sheet_name}" não encontrada'}
-            )
-
-        df = sheets[sheet_name]
-
-        # Verificar se a linha existe
-        if linha_id >= len(df) or linha_id < 0:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f"Linha {linha_id} não encontrada (total: {len(df)} linhas)",
-                }
-            )
-
-        # Verificar se a coluna existe
-        if campo not in df.columns:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f'Campo "{campo}" não encontrado. Campos disponíveis: {list(df.columns)}',
-                }
-            )
-
-        # Validar tipos de dados se necessário
-        original_value = df.at[linha_id, campo]
-        valores_originais = df.iloc[linha_id].to_dict()
-        print(f"📊 Valor original: {original_value} -> Novo valor: {novo_valor}")
-
-        # Atualizar valor
-        df.at[linha_id, campo] = novo_valor
-        sheets[sheet_name] = df
-
-        # Criar backup antes de salvar
-        fazer_backup(ARQUIVO_SAIDA_EXCEL)
-
-        # Salvar arquivo Excel
-        salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
         afetados = _sincronizar_edicao_no_banco(sheet_name, valores_originais, campo, novo_valor)
 
-        print(f"✅ Edição salva com sucesso!")
-        return jsonify(
-            {
-                "success": True,
-                "message": f'Campo "{campo}" atualizado com sucesso!'
-                + _aviso_sincronizacao(afetados),
-            }
-        )
+        print("✅ Edição salva com sucesso!")
+        return jsonify({
+            "success": True,
+            "message": f'Campo "{campo}" atualizado com sucesso!' + _aviso_sincronizacao(afetados),
+        })
 
-    except FileNotFoundError:
-        return jsonify(
-            {"success": False, "message": "Arquivo de relatório não encontrado"}
-        )
-    except PermissionError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Sem permissão para editar o arquivo. Verifique se está aberto em outro programa",
-            }
-        )
-    except pd.errors.EmptyDataError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Arquivo de relatório está vazio ou corrompido",
-            }
-        )
     except Exception as e:
         print(f"❌ Erro ao salvar edição: {e}")
         return jsonify({"success": False, "message": f"Erro inesperado: {str(e)}"})
@@ -289,7 +200,7 @@ def salvar_edicao():
 
 @app.route("/salvar_edicao_completa", methods=["POST"])
 def salvar_edicao_completa():
-    """Salva as edições completas feitas em uma linha."""
+    """Salva a edição de vários campos de uma linha de uma vez."""
     try:
         data = request.json
         sheet_name = data.get("sheet_name")
@@ -300,101 +211,43 @@ def salvar_edicao_completa():
             f"📝 Salvando edição completa: Sheet={sheet_name}, Linha={linha_id}, Dados={dados_linha}"
         )
 
-        # Validação
         if not sheet_name:
-            return jsonify(
-                {"success": False, "message": "Nome da planilha é obrigatório"}
-            )
+            return jsonify({"success": False, "message": "Nome da planilha é obrigatório"})
         if linha_id is None:
             return jsonify({"success": False, "message": "ID da linha é obrigatório"})
         if not dados_linha or not isinstance(dados_linha, dict):
-            return jsonify(
-                {"success": False, "message": "Dados da linha são obrigatórios"}
-            )
+            return jsonify({"success": False, "message": "Dados da linha são obrigatórios"})
 
-        # Verificar se arquivo existe
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            return jsonify(
-                {"success": False, "message": "Arquivo de relatório não encontrado"}
-            )
+        _, valores_originais = _item_e_valores(linha_id, sheet_name)
+        if valores_originais is None:
+            return jsonify({"success": False, "message": "Linha não encontrada"})
 
-        # Ler arquivo Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-
-        if sheet_name not in sheets:
-            return jsonify(
-                {"success": False, "message": f'Planilha "{sheet_name}" não encontrada'}
-            )
-
-        df = sheets[sheet_name]
-
-        # Verificar se a linha existe
-        if linha_id >= len(df) or linha_id < 0:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f"Linha {linha_id} não encontrada (total: {len(df)} linhas)",
-                }
-            )
-
-        # Criar backup antes de salvar
-        fazer_backup(ARQUIVO_SAIDA_EXCEL)
-        valores_originais = df.iloc[linha_id].to_dict()
-
-        # Atualizar todos os campos fornecidos
+        colunas_validas = _colunas_da_categoria(sheet_name)
         campos_atualizados = []
         for campo, novo_valor in dados_linha.items():
-            if campo in df.columns:
-                valor_original = df.at[linha_id, campo]
-                df.at[linha_id, campo] = novo_valor
+            if campo in colunas_validas:
                 campos_atualizados.append(campo)
-                print(f"📊 {campo}: {valor_original} -> {novo_valor}")
+                print(f"📊 {campo}: {valores_originais.get(campo)} -> {novo_valor}")
             else:
                 print(f"⚠️ Campo '{campo}' não encontrado na planilha")
 
         if not campos_atualizados:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Nenhum campo válido foi encontrado para atualizar",
-                }
-            )
+            return jsonify({
+                "success": False,
+                "message": "Nenhum campo válido foi encontrado para atualizar",
+            })
 
-        sheets[sheet_name] = df
-
-        # Salvar arquivo Excel
-        salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
         afetados = _sincronizar_edicao_completa_no_banco(sheet_name, valores_originais, dados_linha)
 
         print(
             f"✅ Edição completa salva com sucesso! Campos atualizados: {', '.join(campos_atualizados)}"
         )
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Linha atualizada com sucesso! ({len(campos_atualizados)} campos alterados)"
-                + _aviso_sincronizacao(afetados),
-            }
-        )
+        return jsonify({
+            "success": True,
+            "message": f"Linha atualizada com sucesso! ({len(campos_atualizados)} campos alterados)"
+            + _aviso_sincronizacao(afetados),
+        })
 
-    except FileNotFoundError:
-        return jsonify(
-            {"success": False, "message": "Arquivo de relatório não encontrado"}
-        )
-    except PermissionError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Sem permissão para editar o arquivo. Verifique se está aberto em outro programa",
-            }
-        )
-    except pd.errors.EmptyDataError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Arquivo de relatório está vazio ou corrompido",
-            }
-        )
     except Exception as e:
         print(f"❌ Erro ao salvar edição completa: {e}")
         return jsonify({"success": False, "message": f"Erro inesperado: {str(e)}"})
@@ -411,76 +264,61 @@ def excluir_linha():
         print(f"🗑️ Excluindo linha: Sheet={sheet_name}, Linha={linha_id}")
 
         if not sheet_name:
-            return jsonify(
-                {"success": False, "message": "Nome da planilha é obrigatório"}
-            )
+            return jsonify({"success": False, "message": "Nome da planilha é obrigatório"})
         if linha_id is None:
             return jsonify({"success": False, "message": "ID da linha é obrigatório"})
 
-        # Verificar se arquivo existe
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            return jsonify(
-                {"success": False, "message": "Arquivo de relatório não encontrado"}
-            )
+        _, valores_originais = _item_e_valores(linha_id, sheet_name)
+        if valores_originais is None:
+            return jsonify({"success": False, "message": "Linha não encontrada"})
 
-        # Ler arquivo Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-
-        if sheet_name not in sheets:
-            return jsonify(
-                {"success": False, "message": f'Planilha "{sheet_name}" não encontrada'}
-            )
-
-        df = sheets[sheet_name]
-
-        # Verificar se a linha existe
-        if linha_id >= len(df) or linha_id < 0:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f"Linha {linha_id} não encontrada (total: {len(df)} linhas)",
-                }
-            )
-
-        # Criar backup antes de excluir
-        fazer_backup(ARQUIVO_SAIDA_EXCEL)
-        valores_originais = df.iloc[linha_id].to_dict()
-
-        # Remover linha
-        df = df.drop(df.index[linha_id]).reset_index(drop=True)
-        sheets[sheet_name] = df
-
-        # Salvar arquivo Excel
-        salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
         afetados = _sincronizar_exclusao_no_banco(sheet_name, valores_originais)
 
-        print(f"✅ Linha excluída com sucesso!")
-        return jsonify(
-            {
-                "success": True,
-                "message": "Linha excluída com sucesso!" + _aviso_sincronizacao(afetados),
-            }
-        )
+        print("✅ Linha excluída com sucesso!")
+        return jsonify({
+            "success": True,
+            "message": "Linha excluída com sucesso!" + _aviso_sincronizacao(afetados),
+        })
 
-    except FileNotFoundError:
-        return jsonify(
-            {"success": False, "message": "Arquivo de relatório não encontrado"}
-        )
-    except PermissionError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Sem permissão para editar o arquivo. Verifique se está aberto em outro programa",
-            }
-        )
     except Exception as e:
         print(f"❌ Erro ao excluir linha: {e}")
         return jsonify({"success": False, "message": f"Erro inesperado: {str(e)}"})
 
 
+def _nova_linha_para_destino(sheet_destino: str, linha_dados: dict) -> dict:
+    """Adapta uma linha de origem para as colunas da categoria de destino."""
+    if sheet_destino == "Avarias":
+        return {
+            "Produto": linha_dados.get("Produto", linha_dados.get("Arquivo", "N/A")),
+            "Quantidade": linha_dados.get("Quantidade", 1),
+            "Peso": linha_dados.get("Peso", "N/A"),
+            "Observação da Mensagem": linha_dados.get("Observação da Mensagem", "N/A"),
+            "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
+            "Ver Imagem": linha_dados.get("Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")),
+        }
+    if sheet_destino == "Uso Interno":
+        return {
+            "Produto": linha_dados.get("Produto", linha_dados.get("Arquivo", "N/A")),
+            "Quantidade": linha_dados.get("Quantidade", 1),
+            "Marca": linha_dados.get("Marca", "N/A"),
+            "Código de Barras": linha_dados.get("Código de Barras", "N/A"),
+            "Observação da Mensagem": linha_dados.get("Observação da Mensagem", "N/A"),
+            "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
+            "Ver Imagem": linha_dados.get("Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")),
+        }
+    # Erros de Análise
+    return {
+        "Arquivo": linha_dados.get("Arquivo", linha_dados.get("Produto", "N/A")),
+        "Detalhes do Erro": linha_dados.get("Detalhes do Erro", "Movido de outra planilha"),
+        "Observação da Mensagem": linha_dados.get("Observação da Mensagem", "N/A"),
+        "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
+        "Ver Imagem": linha_dados.get("Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")),
+    }
+
+
 @app.route("/mover_item", methods=["POST"])
 def mover_item():
-    """Move um item de uma tabela para outra."""
+    """Move um item de uma categoria para outra."""
     try:
         data = request.json
         sheet_origem = data.get("sheet_origem")
@@ -489,192 +327,43 @@ def mover_item():
 
         print(f"🔄 Movendo item: {sheet_origem} -> {sheet_destino}, Linha={linha_id}")
 
-        # Validação
         if not sheet_origem or not sheet_destino:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Planilhas de origem e destino são obrigatórias",
-                }
-            )
+            return jsonify({
+                "success": False,
+                "message": "Planilhas de origem e destino são obrigatórias",
+            })
         if linha_id is None:
             return jsonify({"success": False, "message": "ID da linha é obrigatório"})
         if sheet_origem == sheet_destino:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Planilha de origem e destino não podem ser iguais",
-                }
-            )
+            return jsonify({
+                "success": False,
+                "message": "Planilha de origem e destino não podem ser iguais",
+            })
+        if sheet_destino not in mestre.ORDEM_CATEGORIAS:
+            return jsonify({
+                "success": False,
+                "message": f'Tipo de planilha destino "{sheet_destino}" não reconhecido',
+            })
 
-        # Verificar se arquivo existe
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            return jsonify(
-                {"success": False, "message": "Arquivo de relatório não encontrado"}
-            )
+        _, valores_originais = _item_e_valores(linha_id, sheet_origem)
+        if valores_originais is None:
+            return jsonify({"success": False, "message": "Linha não encontrada"})
 
-        # Ler arquivo Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-
-        if sheet_origem not in sheets:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f'Planilha de origem "{sheet_origem}" não encontrada',
-                }
-            )
-        if sheet_destino not in sheets:
-            # Se a planilha de destino não existir, criar uma vazia
-            # Definir colunas baseadas no tipo de planilha
-            if sheet_destino == "Avarias":
-                colunas_destino = [
-                    "Produto",
-                    "Peso",
-                    "Observação da Mensagem",
-                    "Caminho da Imagem",
-                    "Ver Imagem",
-                ]
-            elif sheet_destino == "Uso Interno":
-                colunas_destino = [
-                    "Produto",
-                    "Marca",
-                    "Código de Barras",
-                    "Observação da Mensagem",
-                    "Caminho da Imagem",
-                    "Ver Imagem",
-                ]
-            elif sheet_destino == "Erros de Análise":
-                colunas_destino = [
-                    "Arquivo",
-                    "Detalhes do Erro",
-                    "Observação da Mensagem",
-                    "Caminho da Imagem",
-                    "Ver Imagem",
-                ]
-            else:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f'Tipo de planilha destino "{sheet_destino}" não reconhecido',
-                    }
-                )
-
-            sheets[sheet_destino] = pd.DataFrame(columns=colunas_destino)
-
-        df_origem = sheets[sheet_origem]
-        df_destino = sheets[sheet_destino]
-
-        # Verificar se a linha existe na origem
-        if linha_id >= len(df_origem) or linha_id < 0:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": f"Linha {linha_id} não encontrada na planilha origem (total: {len(df_origem)} linhas)",
-                }
-            )
-
-        # Obter dados da linha
-        linha_dados = df_origem.iloc[linha_id].copy()
-
-        # Criar backup antes de mover
-        fazer_backup(ARQUIVO_SAIDA_EXCEL)
-
-        # Adaptar dados para a planilha de destino
-        nova_linha = {}
-
-        if sheet_destino == "Avarias":
-            nova_linha = {
-                "Produto": linha_dados.get(
-                    "Produto", linha_dados.get("Arquivo", "N/A")
-                ),
-                "Peso": linha_dados.get("Peso", "N/A"),
-                "Observação da Mensagem": linha_dados.get(
-                    "Observação da Mensagem", "N/A"
-                ),
-                "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
-                "Ver Imagem": linha_dados.get(
-                    "Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")
-                ),
-            }
-        elif sheet_destino == "Uso Interno":
-            nova_linha = {
-                "Produto": linha_dados.get(
-                    "Produto", linha_dados.get("Arquivo", "N/A")
-                ),
-                "Marca": linha_dados.get("Marca", "N/A"),
-                "Código de Barras": linha_dados.get("Código de Barras", "N/A"),
-                "Observação da Mensagem": linha_dados.get(
-                    "Observação da Mensagem", "N/A"
-                ),
-                "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
-                "Ver Imagem": linha_dados.get(
-                    "Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")
-                ),
-            }
-        elif sheet_destino == "Erros de Análise":
-            nova_linha = {
-                "Arquivo": linha_dados.get(
-                    "Arquivo", linha_dados.get("Produto", "N/A")
-                ),
-                "Detalhes do Erro": linha_dados.get(
-                    "Detalhes do Erro", "Movido de outra planilha"
-                ),
-                "Observação da Mensagem": linha_dados.get(
-                    "Observação da Mensagem", "N/A"
-                ),
-                "Caminho da Imagem": linha_dados.get("Caminho da Imagem", "N/A"),
-                "Ver Imagem": linha_dados.get(
-                    "Ver Imagem", linha_dados.get("Caminho da Imagem", "N/A")
-                ),
-            }
-
-        # Adicionar nova linha à planilha de destino
-        df_destino = pd.concat(
-            [df_destino, pd.DataFrame([nova_linha])], ignore_index=True
+        nova_linha = _nova_linha_para_destino(sheet_destino, valores_originais)
+        afetados = _sincronizar_movimentacao_no_banco(
+            sheet_origem, sheet_destino, valores_originais, nova_linha
         )
-
-        # Remover linha da planilha de origem
-        df_origem = df_origem.drop(df_origem.index[linha_id]).reset_index(drop=True)
-
-        # Atualizar sheets
-        sheets[sheet_origem] = df_origem
-        sheets[sheet_destino] = df_destino
-
-        # Salvar arquivo Excel (só grava planilhas não vazias)
-        salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets, apenas_nao_vazias=True)
-        afetados = _sincronizar_movimentacao_no_banco(sheet_origem, sheet_destino, linha_dados.to_dict(), nova_linha)
 
         produto_nome = nova_linha.get("Produto", nova_linha.get("Arquivo", "Item"))
         print(
             f"✅ Item '{produto_nome}' movido com sucesso de '{sheet_origem}' para '{sheet_destino}'!"
         )
+        return jsonify({
+            "success": True,
+            "message": f"Item '{produto_nome}' movido com sucesso de '{sheet_origem}' para '{sheet_destino}'!"
+            + _aviso_sincronizacao(afetados),
+        })
 
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Item '{produto_nome}' movido com sucesso de '{sheet_origem}' para '{sheet_destino}'!"
-                + _aviso_sincronizacao(afetados),
-            }
-        )
-
-    except FileNotFoundError:
-        return jsonify(
-            {"success": False, "message": "Arquivo de relatório não encontrado"}
-        )
-    except PermissionError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Sem permissão para editar o arquivo. Verifique se está aberto em outro programa",
-            }
-        )
-    except pd.errors.EmptyDataError:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Arquivo de relatório está vazio ou corrompido",
-            }
-        )
     except Exception as e:
         print(f"❌ Erro ao mover item: {e}")
         return jsonify({"success": False, "message": f"Erro inesperado: {str(e)}"})
@@ -682,7 +371,7 @@ def mover_item():
 
 @app.route("/adicionar_linha", methods=["POST"])
 def adicionar_linha():
-    """Adiciona uma nova linha ao relatório."""
+    """Adiciona uma nova linha ao relatório (item manual, sem execução)."""
     try:
         data = request.json
         sheet_name = data.get("sheet_name")
@@ -691,83 +380,43 @@ def adicionar_linha():
         print(f"➕ Adicionando linha: Sheet={sheet_name}, Dados={dados_linha}")
 
         if not sheet_name:
-            return jsonify(
-                {"success": False, "message": "Nome da planilha é obrigatório"}
-            )
-        if not dados_linha or not isinstance(dados_linha, dict):
-            return jsonify(
-                {"success": False, "message": "Dados da linha são obrigatórios"}
-            )
-
-        # Verificar se arquivo existe
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
-            return jsonify(
-                {"success": False, "message": "Arquivo de relatório não encontrado"}
-            )
-
-        # Ler arquivo Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-
-        if sheet_name not in sheets:
-            return jsonify(
-                {"success": False, "message": f'Planilha "{sheet_name}" não encontrada'}
-            )
-
-        df = sheets[sheet_name]
-
-        # Validar campos obrigatórios (se aplicável)
-        campos_obrigatorios = ["Produto", "Quantidade"]
-        for campo in campos_obrigatorios:
-            if campo in df.columns and not dados_linha.get(campo, "").strip():
-                return jsonify(
-                    {"success": False, "message": f'Campo "{campo}" é obrigatório'}
-                )
-
-        # Criar nova linha com as colunas existentes
-        nova_linha = {}
-        for coluna in df.columns:
-            valor = dados_linha.get(coluna, "")
-            # Adicionar timestamp para campos de data se estiverem vazios
-            if "Data" in coluna and not valor:
-                valor = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            nova_linha[coluna] = valor
-
-        # Criar backup antes de adicionar
-        fazer_backup(ARQUIVO_SAIDA_EXCEL)
-
-        # Adicionar nova linha
-        df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
-        sheets[sheet_name] = df
-
-        # Salvar arquivo Excel
-        salvar_todas_sheets(ARQUIVO_SAIDA_EXCEL, sheets)
-        try:
-            # run_id=None: item digitado manualmente, sem execução automática
-            # por trás. Não aparece em nenhum "Histórico > Execução", mas
-            # fica registrado no banco para consistência.
-            db.adicionar_item(None, sheet_name, nova_linha)
-        except Exception as e:
-            print(f"⚠️ Não foi possível sincronizar a nova linha com o banco: {e}")
-
-        print(f"✅ Linha adicionada com sucesso! Total de linhas: {len(df)}")
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Nova linha adicionada com sucesso! Total: {len(df)} registros",
-            }
-        )
-
-    except FileNotFoundError:
-        return jsonify(
-            {"success": False, "message": "Arquivo de relatório não encontrado"}
-        )
-    except PermissionError:
-        return jsonify(
-            {
+            return jsonify({"success": False, "message": "Nome da planilha é obrigatório"})
+        if sheet_name not in mestre.ORDEM_CATEGORIAS:
+            return jsonify({
                 "success": False,
-                "message": "Sem permissão para editar o arquivo. Verifique se está aberto em outro programa",
-            }
-        )
+                "message": f'Tipo de planilha "{sheet_name}" não reconhecido',
+            })
+        if not dados_linha or not isinstance(dados_linha, dict):
+            return jsonify({"success": False, "message": "Dados da linha são obrigatórios"})
+
+        # Campos obrigatórios conforme a categoria.
+        if sheet_name == "Erros de Análise":
+            obrigatorios = ["Arquivo"]
+        else:
+            obrigatorios = ["Produto", "Quantidade"]
+        for campo in obrigatorios:
+            if not str(dados_linha.get(campo, "")).strip():
+                return jsonify({"success": False, "message": f'Campo "{campo}" é obrigatório'})
+
+        # Mantém apenas as colunas conhecidas da categoria.
+        colunas = _colunas_da_categoria(sheet_name)
+        nova_linha = {col: dados_linha.get(col, "") for col in colunas if col != "Ver Imagem"}
+        # 'Ver Imagem' deve acompanhar o caminho, quando houver.
+        if "Caminho da Imagem" in nova_linha:
+            nova_linha["Ver Imagem"] = dados_linha.get(
+                "Ver Imagem", nova_linha["Caminho da Imagem"]
+            )
+
+        # run_id=None: item digitado manualmente, sem execução automática por
+        # trás. Não aparece em "Histórico > Execução", mas fica no banco.
+        db.adicionar_item(None, sheet_name, nova_linha)
+
+        print(f"✅ Linha adicionada com sucesso! Sheet={sheet_name}")
+        return jsonify({
+            "success": True,
+            "message": "Nova linha adicionada com sucesso!",
+        })
+
     except Exception as e:
         print(f"❌ Erro ao adicionar linha: {e}")
         return jsonify({"success": False, "message": f"Erro inesperado: {str(e)}"})

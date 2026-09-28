@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from ..core.paths import ARQUIVO_SAIDA_EXCEL, DATABASE_DIR, DATABASE_FILE
+from ..core.paths import DATABASE_DIR, DATABASE_FILE
 from .unification import extrair_peso_de_valor
 
 SCHEMA = """
@@ -345,6 +345,81 @@ def excluir_item(item_id: int) -> Optional[int]:
         return row["run_id"]
 
 
+# ---------------------------------------------------------------------------
+# Erros de análise (usado pelo GerenciadorErros / reanálise de erros)
+# ---------------------------------------------------------------------------
+
+def listar_erros_por_arquivo() -> List[Dict[str, Any]]:
+    """Itens da categoria 'Erros de Análise' no ESTADO ATUAL, mais recentes primeiro.
+
+    Base do `GerenciadorErros.obter_erros_pendentes`. Como na visão mestre, só
+    entram os erros da versão mais recente de cada linhagem: um erro que já foi
+    corrigido por uma reanálise não deve reaparecer. A ordem é por execução mais
+    nova, para a reanálise partir sempre da versão vigente. Itens sem execução
+    (manuais) entram sempre.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT ri.*
+               FROM report_items ri
+               LEFT JOIN processing_runs pr ON pr.id = ri.run_id
+               LEFT JOIN (
+                   SELECT raiz_execucao_id, MAX(id) AS ultimo_run
+                   FROM processing_runs
+                   GROUP BY COALESCE(raiz_execucao_id, id)
+               ) ultima ON ultima.ultimo_run = pr.id
+               WHERE ri.categoria = 'Erros de Análise'
+                 AND (ri.run_id IS NULL OR ultima.ultimo_run IS NOT NULL)
+               ORDER BY COALESCE(pr.id, 0) DESC, ri.id DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def excluir_erros_do_arquivo(nome_arquivo: str) -> int:
+    """Remove as linhas de erro de um arquivo (erro corrigido na reanálise).
+
+    Devolve quantas saíram e recalcula as contagens das execuções afetadas,
+    senão os números do Histórico ficariam com erros que já não existem.
+    """
+    with get_connection() as conn:
+        runs = {
+            row["run_id"]
+            for row in conn.execute(
+                "SELECT DISTINCT run_id FROM report_items "
+                "WHERE categoria = 'Erros de Análise' AND produto = ?",
+                (nome_arquivo,),
+            )
+            if row["run_id"] is not None
+        }
+        cursor = conn.execute(
+            "DELETE FROM report_items WHERE categoria = 'Erros de Análise' AND produto = ?",
+            (nome_arquivo,),
+        )
+        removidos = cursor.rowcount
+
+    for run_id in runs:
+        recalcular_contagens(run_id)
+    return removidos
+
+
+def anotar_tentativa_reanalise(nome_arquivo: str, detalhe: str) -> int:
+    """Anexa uma observação às linhas de erro de um arquivo (falhou de novo).
+
+    O equivalente, no banco, ao que o GerenciadorErros fazia no Excel: registra
+    que houve tentativa e que não resolveu. Devolve quantas linhas mudaram.
+    """
+    if not nome_arquivo:
+        return 0
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """UPDATE report_items
+               SET detalhes = COALESCE(detalhes, '') || ?
+               WHERE categoria = 'Erros de Análise' AND produto = ?""",
+            (detalhe, nome_arquivo),
+        )
+        return cursor.rowcount
+
+
 def adicionar_item(run_id: Optional[int], categoria: str, dados: Dict[str, str]) -> int:
     """Adiciona um novo item histórico à execução informada.
 
@@ -492,6 +567,39 @@ def excluir_itens(item_ids: List[int]) -> set:
     return runs
 
 
+def excluir_itens_por_caminho(caminhos) -> int:
+    """Remove TODAS as linhas cujo `caminho_imagem` esteja na lista.
+
+    Usado pela reanálise seletiva do mestre: uma imagem pode ter gerado linhas
+    em várias categorias e em várias execuções; ao reprocessá-la, todas as
+    versões antigas saem do banco e só as novas permanecem. Recalcula as
+    contagens das execuções afetadas para o Histórico não ficar inflado.
+
+    Devolve quantas linhas foram removidas.
+    """
+    caminhos = [str(c) for c in caminhos if c]
+    if not caminhos:
+        return 0
+    marcadores = ",".join("?" for _ in caminhos)
+    with get_connection() as conn:
+        runs = {
+            row["run_id"]
+            for row in conn.execute(
+                f"SELECT DISTINCT run_id FROM report_items WHERE caminho_imagem IN ({marcadores})",
+                caminhos,
+            )
+            if row["run_id"] is not None
+        }
+        cursor = conn.execute(
+            f"DELETE FROM report_items WHERE caminho_imagem IN ({marcadores})", caminhos
+        )
+        removidos = cursor.rowcount
+
+    for run_id in runs:
+        recalcular_contagens(run_id)
+    return removidos
+
+
 def mover_itens_categoria(item_ids: List[int], nova_categoria: str) -> int:
     """Move vários itens de categoria. Devolve quantos mudaram."""
     if not item_ids:
@@ -541,6 +649,43 @@ def listar_execucoes(limite: int = 50) -> List[Dict[str, Any]]:
             (limite,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def listar_todos_itens() -> List[Dict[str, Any]]:
+    """Itens que formam o ESTADO ATUAL (visão mestre), dos mais recentes aos antigos.
+
+    Base da visão mestre (services/mestre.py). Só entram os itens da VERSÃO MAIS
+    RECENTE de cada linhagem (``raiz_execucao_id``): uma reanálise por execução
+    cria uma nova versão e mantém a antiga no banco como histórico, mas o
+    relatório mestre deve refletir apenas o resultado mais novo — nunca a versão
+    antiga e a nova somadas.
+
+    Execuções comuns são linhagens de uma versão só (raiz = ela mesma), então
+    entram integralmente; a deduplicação entre linhagens diferentes (a mesma
+    imagem reprocessada em execuções distintas) é feita em mestre.py pela chave
+    de conteúdo.
+
+    A ordenação é por ``processing_runs.id DESC`` (a execução), não por
+    ``report_items.id``, para o critério ser "execução mais recente" e não
+    "linha inserida por último".
+
+    Itens sem execução (``run_id IS NULL``), adicionados à mão pela tela de
+    edição, entram sempre — não pertencem a linhagem nenhuma.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT ri.*
+               FROM report_items ri
+               LEFT JOIN processing_runs pr ON pr.id = ri.run_id
+               LEFT JOIN (
+                   SELECT raiz_execucao_id, MAX(id) AS ultimo_run
+                   FROM processing_runs
+                   GROUP BY COALESCE(raiz_execucao_id, id)
+               ) ultima ON ultima.ultimo_run = pr.id
+               WHERE ri.run_id IS NULL OR ultima.ultimo_run IS NOT NULL
+               ORDER BY COALESCE(pr.id, 0) DESC, ri.id DESC"""
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def obter_execucao(run_id: int) -> Optional[Dict[str, Any]]:
@@ -920,34 +1065,35 @@ def resumo_geral() -> Dict[str, Any]:
     )
     top_produtos_avaria: List[Dict[str, Any]] = []
 
-    if ARQUIVO_SAIDA_EXCEL.exists():
-        from .report_editing import carregar_todas_sheets  # import tardio: evita ciclo services -> services
+    # Totais do ESTADO atual (não do histórico de atividade): vêm da visão
+    # mestre do banco, deduplicada — a mesma que as telas e o export usam.
+    # Antes liam o Excel mestre, que podia divergir (o arquivo é só um export).
+    from . import mestre  # import tardio: evita ciclo services -> services
 
-        try:
-            sheets = carregar_todas_sheets(str(ARQUIVO_SAIDA_EXCEL))
-        except Exception as e:
-            print(f"⚠️ Não foi possível ler o Excel mestre para o resumo do histórico: {e}")
-            sheets = {}
+    try:
+        secoes = mestre.obter_secoes_mestre()
+    except Exception as e:
+        print(f"⚠️ Não foi possível montar a visão mestre para o resumo: {e}")
+        secoes = {}
 
-        df_avarias = sheets.get("Avarias")
-        if df_avarias is not None and not df_avarias.empty:
-            totais_dict["total_avarias"] = len(df_avarias)
-            if "Peso" in df_avarias.columns:
-                pesos = (extrair_peso_de_valor(v) for v in df_avarias["Peso"])
-                totais_dict["peso_total_avarias_kg"] = round(sum(p for p in pesos if p), 3)
-            if "Produto" in df_avarias.columns:
-                contagem = df_avarias["Produto"].value_counts().head(5)
-                top_produtos_avaria = [
-                    {"produto": produto, "ocorrencias": int(qtd)} for produto, qtd in contagem.items()
-                ]
+    linhas_avarias = secoes.get("Avarias", {}).get("dados", [])
+    if linhas_avarias:
+        totais_dict["total_avarias"] = len(linhas_avarias)
+        pesos = (extrair_peso_de_valor(linha.get("Peso")) for linha in linhas_avarias)
+        totais_dict["peso_total_avarias_kg"] = round(sum(p for p in pesos if p), 3)
 
-        df_uso = sheets.get("Uso Interno")
-        if df_uso is not None:
-            totais_dict["total_uso_interno"] = len(df_uso)
+        contagem: Dict[str, int] = {}
+        for linha in linhas_avarias:
+            nome = str(linha.get("Produto") or "").strip()
+            if nome:
+                contagem[nome] = contagem.get(nome, 0) + 1
+        top_produtos_avaria = [
+            {"produto": produto, "ocorrencias": qtd}
+            for produto, qtd in sorted(contagem.items(), key=lambda kv: -kv[1])[:5]
+        ]
 
-        df_erros = sheets.get("Erros de Análise")
-        if df_erros is not None:
-            totais_dict["total_erros"] = len(df_erros)
+    totais_dict["total_uso_interno"] = len(secoes.get("Uso Interno", {}).get("dados", []))
+    totais_dict["total_erros"] = len(secoes.get("Erros de Análise", {}).get("dados", []))
 
     return {
         "totais": totais_dict,

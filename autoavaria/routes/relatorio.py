@@ -23,9 +23,26 @@ from .blueprint import web_bp as app
 from .context import ARCHIVE_FOLDER, ARQUIVO_SAIDA_EXCEL, BASE_PATH, DIRETORIO_IMAGENS, EXTENSOES_IMAGEM
 from ..services import db as db_service
 from ..services import invertexto
+from ..services import mestre
 from ..services.export_service import escrever_txt_detalhado, escrever_xlsx
 from ..services.relatorio_view import _construir_dados_relatorio
 from ..services.report_editing import carregar_todas_sheets
+
+
+def _sheets_para_exportacao():
+    """Sheets do relatório para exportação, vindas do BANCO (visão mestre).
+
+    O Excel mestre virou export sob demanda: lê-lo daria dados defasados (ou
+    falharia se nunca foi gerado). Só cai para o arquivo se o banco ainda não
+    tiver nenhuma execução (instalação antiga, de antes da migração).
+    """
+    sheets = mestre.obter_sheets_mestre()
+    if not sheets and os.path.exists(ARQUIVO_SAIDA_EXCEL):
+        try:
+            sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
+        except Exception as e:
+            print(f"⚠️ Fallback para o Excel mestre falhou: {e}")
+    return sheets
 
 
 def _resolver_imagem(nome_original: str):
@@ -144,9 +161,10 @@ def _visualizar_relatorio_excel_completo():
 
 @app.route("/download_relatorio")
 def download_relatorio():
-    """Download do relatório em Excel."""
+    """Download do relatório em Excel (gerado na hora a partir do banco)."""
     try:
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+        sheets = _sheets_para_exportacao()
+        if not sheets:
             flash("Relatório não encontrado", "warning")
             return redirect(url_for("index"))
 
@@ -154,18 +172,14 @@ def download_relatorio():
         secoes_json = request.args.get('secoes')
         colunas_json = request.args.get('colunas')
 
+        xlsx_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+        xlsx_path = os.path.join(BASE_PATH, "resultados", f"temp_{xlsx_filename}")
+
         if secoes_json and colunas_json:
             # Aplicar filtros
             import json as json_lib
             secoes_selecionadas = json_lib.loads(secoes_json)
             colunas_por_secao = json_lib.loads(colunas_json)
-
-            # Ler Excel original
-            sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
-
-            # Criar arquivo filtrado
-            xlsx_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
-            xlsx_path = os.path.join(BASE_PATH, "resultados", f"temp_{xlsx_filename}")
 
             secoes_para_escrever = {}
             for secao in secoes_selecionadas:
@@ -177,33 +191,28 @@ def download_relatorio():
                 colunas_existentes = [col for col in colunas if col in sheets[secao].columns]
                 if colunas_existentes:
                     secoes_para_escrever[secao] = sheets[secao][colunas_existentes]
-
             escrever_xlsx(xlsx_path, secoes_para_escrever)
-
-            # Enviar arquivo filtrado
-            response = send_file(
-                xlsx_path,
-                as_attachment=True,
-                download_name=xlsx_filename,
-            )
-
-            # Remover arquivo temporário
-            @response.call_on_close
-            def remove_file():
-                try:
-                    if os.path.exists(xlsx_path):
-                        os.remove(xlsx_path)
-                except:
-                    pass
-
-            return response
         else:
-            # Download completo (comportamento original)
-            return send_file(
-                ARQUIVO_SAIDA_EXCEL,
-                as_attachment=True,
-                download_name=f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-            )
+            # Download completo: o mestre inteiro, com formatação (hyperlinks).
+            escrever_xlsx(xlsx_path, sheets, aplicar_formatacao=True)
+
+        # Enviar arquivo
+        response = send_file(
+            xlsx_path,
+            as_attachment=True,
+            download_name=xlsx_filename,
+        )
+
+        # Remover arquivo temporário
+        @response.call_on_close
+        def remove_file():
+            try:
+                if os.path.exists(xlsx_path):
+                    os.remove(xlsx_path)
+            except Exception:
+                pass
+
+        return response
     except Exception as e:
         flash(f"Erro no download: {str(e)}", "danger")
         return redirect(url_for("index"))
@@ -211,12 +220,11 @@ def download_relatorio():
 
 @app.route("/api/opcoes_exportacao")
 def api_opcoes_exportacao():
-    """API para obter seções e colunas disponíveis para exportação."""
+    """API para obter seções e colunas disponíveis para exportação (do banco)."""
     try:
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+        sheets = _sheets_para_exportacao()
+        if not sheets:
             return jsonify({"error": "Relatório não encontrado"}), 404
-
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
 
         secoes = list(sheets.keys())
         colunas_por_secao = {}
@@ -235,18 +243,17 @@ def api_opcoes_exportacao():
 
 @app.route("/download_relatorio_txt")
 def download_relatorio_txt():
-    """Download do relatório em formato TXT."""
+    """Download do relatório em formato TXT (a partir do banco)."""
     try:
-        if not os.path.exists(ARQUIVO_SAIDA_EXCEL):
+        # Ler todas as sheets da visão mestre do banco
+        sheets = _sheets_para_exportacao()
+        if not sheets:
             flash("Relatório não encontrado", "warning")
             return redirect(url_for("index"))
 
         # Obter filtros de seções e colunas
         secoes_json = request.args.get('secoes')
         colunas_json = request.args.get('colunas')
-
-        # Ler todas as sheets do Excel
-        sheets = carregar_todas_sheets(ARQUIVO_SAIDA_EXCEL)
 
         # Aplicar filtros se fornecidos
         secoes_para_exportar = sheets.keys()
