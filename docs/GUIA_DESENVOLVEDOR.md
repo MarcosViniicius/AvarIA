@@ -1,4 +1,4 @@
-# Guia do Desenvolvedor — Auto Avaria
+# Guia do Desenvolvedor — AvarIA
 
 Setup, arquitetura, backend, rotas, banco, testes e deploy.
 

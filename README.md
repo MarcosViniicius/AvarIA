@@ -1,6 +1,8 @@
-# 🔍 Auto Avaria
+# 🔍 AvarIA
 
-Sistema web para automatizar o registro de avarias de mercadorias em loja: a partir de fotos dos produtos (e, opcionalmente, da conversa do WhatsApp que acompanha o envio), o sistema identifica cada item, extrai os dados relevantes (código de barras, valor, quantidade) e monta um relatório estruturado — pronto para exportar em Excel/TXT — separando os casos em **Avaria**, **Uso Interno** e **Erro**.
+**As perdas da loja à vista.**
+
+Sistema web para automatizar o registro de avarias e uso interno de mercadorias em loja: a partir de fotos dos produtos (e, opcionalmente, da conversa do WhatsApp que acompanha o envio), o sistema identifica cada item, extrai os dados relevantes (código de barras, peso, quantidade) e monta um relatório estruturado — pronto para exportar em Excel/TXT — separando os casos em **Avaria**, **Uso Interno** e **Erro**.
 
 ## 🎯 Como funciona
 
@@ -227,4 +229,4 @@ Este projeto é de uso interno/privado.
 
 ---
 
-**Desenvolvido com ❤️ usando Flask e IA**
+**AvarIA** — desenvolvido com ❤️ usando Flask e IA.

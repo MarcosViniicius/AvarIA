@@ -1,4 +1,4 @@
-# Guia do Usuário — Auto Avaria
+# Guia do Usuário — AvarIA
 
 Para quem opera a loja: envia fotos, confere o relatório, exporta e corrige erros.
 Sem jargão técnico. Se você desenvolve, vá para `GUIA_DESENVOLVEDOR.md`.

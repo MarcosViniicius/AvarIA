@@ -7,6 +7,11 @@
 Sistema Flask para registrar avarias de mercadorias a partir de fotos + texto do WhatsApp.
 Gera relatório Excel/TXT separando itens em **Avaria**, **Uso Interno** e **Erro**.
 
+> **Marca:** AvarIA (ex-"Auto Avaria"); tagline "As perdas da loja à vista". O pacote
+> Python é `avariaia` — o nome antigo `autoavaria` sobrevive apenas como
+> compatibilidade (alias `AutoAvariaError`, banco legado `autoavaria.db` e chave de
+> tema antiga). Ver `docs/IDENTIDADE.md` e `docs/MIGRACAO_NOME.md`.
+
 Fluxo: `Upload/ZIP → imagens_para_analisar/ + conversa.txt → pipeline (lotes) → SQLite (fonte da verdade) → edição → unificação/exportação (Excel/TXT sob demanda)`.
 
 ## 2. Comandos
