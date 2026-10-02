@@ -109,7 +109,13 @@ def registrar(
     if not forcar:
         existente = buscar_por_hash(digest)
         if existente is not None:
-            return None  # conteúdo idêntico já armazenado
+            # Fantasma: o registro existe mas os bytes foram apagados por fora
+            # (ex.: "Limpar imagens" anterior a este tratamento). Deixar isso
+            # bloquearia o reenvio do mesmo arquivo para sempre — remove o
+            # registro órfão e segue com a gravação nova.
+            if Path(caminho_de(existente)).exists():
+                return None  # conteúdo idêntico já armazenado
+            remover(existente["id"], apagar_fisico=False)
 
     extensao = os.path.splitext(nome_original)[1].lower() or ".bin"
     nome_fisico = _nome_fisico(extensao)
@@ -275,6 +281,22 @@ def atualizar_caminho_fisico(nome_original: str, novo_nome_fisico: str, pasta: s
 def caminho_de(registro: Dict[str, Any]) -> str:
     """Caminho absoluto do arquivo físico de um registro."""
     return str(pasta_de(registro["pasta"]) / registro["nome_fisico"])
+
+
+def limpar(pasta: Optional[str] = None) -> int:
+    """Remove registros do acervo (os bytes são apagados por quem chama).
+
+    `pasta=None` limpa tudo (usado quando as duas pastas são esvaziadas);
+    com uma pasta, limpa só os registros dela — assim os links das imagens
+    arquivadas continuam resolvendo mesmo depois de um "reprocessar tudo".
+    """
+    db = _db()
+    with db.get_connection() as conn:
+        if pasta:
+            cursor = conn.execute("DELETE FROM arquivos WHERE pasta = ?", (pasta,))
+        else:
+            cursor = conn.execute("DELETE FROM arquivos")
+        return cursor.rowcount
 
 
 def remover(arquivo_id: int, apagar_fisico: bool = True) -> bool:

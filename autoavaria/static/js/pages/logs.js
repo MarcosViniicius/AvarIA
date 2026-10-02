@@ -6,6 +6,14 @@
   let updateInterval;
   const logsExibidos = new Set(); // evita reexibir a mesma linha a cada polling
 
+  // Logs carregam nomes de arquivos/produtos do banco: escapar antes de
+  // interpolar em innerHTML (um nome com markup executaria na página).
+  function escapeHtml(texto) {
+    return String(texto).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     // Elementos
     const logConsole = document.getElementById("logConsole");
@@ -178,8 +186,8 @@
       );
 
       logEntry.innerHTML = `
-      <span class="log-timestamp">[${timestamp}]</span>
-      <span class="ms-2">${texto}</span>
+      <span class="log-timestamp">[${escapeHtml(timestamp)}]</span>
+      <span class="ms-2">${escapeHtml(texto)}</span>
     `;
 
       logConsole.appendChild(logEntry);

@@ -695,6 +695,26 @@ function finalizarMonitoramento(data) {
 }
 
 /**
+ * Escapa texto para interpolação segura em innerHTML.
+ *
+ * Mensagens de alerta podem conter dados do usuário (nomes de arquivo/produto
+ * vindos do banco); sem escape, um nome com markup executaria na página.
+ */
+function escapeHtml(texto) {
+  return String(texto).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[c])
+  );
+}
+
+/**
  * Exibe alertas personalizados
  */
 function showAlert(type, message, options = {}) {
@@ -746,7 +766,7 @@ function showAlert(type, message, options = {}) {
   const icon = icons[type] || icons.info;
 
   alertDiv.innerHTML = `
-        <i class="bi ${icon} me-2"></i>${message}
+        <i class="bi ${icon} me-2"></i>${escapeHtml(message)}
         ${
           dismissible
             ? '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>'

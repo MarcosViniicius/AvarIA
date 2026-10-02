@@ -53,6 +53,19 @@ def reanalisar_erros_api():
         total_erros = gerenciador.contar_erros_pendentes()
 
         if total_erros == 0:
+            # Estado final explícito: o modal do front acompanha o polling e,
+            # sem isto (progresso 0 e ativo False), ele nunca concluía e o
+            # botão Fechar ficava desabilitado para sempre.
+            app_state.progresso_atual = {
+                "progresso": 100,
+                "status": "Nenhum erro pendente para reanalisar",
+                "logs": ["ℹ️ Nenhum erro pendente para reanalisar"],
+                "resultado": {
+                    "total_arquivos": 0,
+                    "corrigidos": 0,
+                    "ainda_com_erro": 0,
+                },
+            }
             return jsonify({
                 "success": True,
                 "message": "Nenhum erro pendente para reanalisar",
@@ -169,8 +182,11 @@ def reanalisar_mestre_api():
         try:
             from ..services.extraction_pipeline import _validar_categorias
             _validar_categorias(categorias)
-            if imagens is not None and (not isinstance(imagens, list) or not imagens) and not categorias:
-                raise ValueError("Nenhuma imagem selecionada para reanálise")
+            if imagens is not None:
+                if not isinstance(imagens, list):
+                    raise ValueError("'imagens' deve ser uma lista de nomes de arquivos")
+                if not imagens and not categorias:
+                    raise ValueError("Nenhuma imagem selecionada para reanálise")
         except ValueError as e:
             return jsonify({"success": False, "message": str(e)}), 400
 
@@ -231,6 +247,9 @@ def reanalisar_mestre_api():
         return jsonify({"success": True, "message": f"Reanálise seletiva iniciada ({escopo_txt})"})
 
     except Exception as e:
+        # Nunca deixar o flag preso: sem isto, uma falha aqui bloqueava todo
+        # processamento/reanálise seguinte até reiniciar o servidor.
+        app_state.processamento_ativo = False
         return jsonify({
             "success": False,
             "message": f"Erro ao iniciar reanálise: {str(e)}"

@@ -278,8 +278,8 @@ document.addEventListener('DOMContentLoaded', function() {
           detalhesElement.textContent = ultimoLog;
         }
         
-        // Verificar se concluído
-        if (!data.ativo && progresso >= 100) {
+        // Verificar se concluído (com sucesso OU com erro reportado)
+        if (!data.ativo && (progresso >= 100 || data.erro)) {
           clearInterval(progressInterval);
           progressInterval = null;
           
@@ -325,7 +325,7 @@ document.addEventListener('DOMContentLoaded', function() {
     resultadoConteudo.innerHTML = `
       <div class="alert alert-danger mb-0">
         <i class="bi bi-exclamation-triangle me-2"></i>
-        <strong>Erro:</strong> ${erro}
+        <strong>Erro:</strong> ${escapeHtml(erro)}
       </div>
     `;
     statusElement.textContent = 'Erro na reanálise';
@@ -577,6 +577,112 @@ window.realizarExportacao = function() {
     alert('Erro ao realizar exportação: ' + error.message);
   }
 };
+
+// ========================================
+// ACOES DA TABELA (atualizar / CSV / imprimir)
+// ========================================
+document.addEventListener('DOMContentLoaded', function () {
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function () {
+      window.location.reload();
+    });
+  }
+
+  document.querySelectorAll('.export-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const table = document.getElementById(btn.getAttribute('data-table'));
+      if (table) exportarTabelaCSV(table);
+    });
+  });
+
+  document.querySelectorAll('.print-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const table = document.getElementById(btn.getAttribute('data-table'));
+      if (table) imprimirTabela(table);
+    });
+  });
+});
+
+/** Todas as linhas de dados, mesmo as escondidas por busca/paginacao. */
+function linhasCompletasDaTabela(table) {
+  if (Array.isArray(table._todasAsLinhas)) return table._todasAsLinhas;
+  if (typeof tabelaLinhas === 'function') return tabelaLinhas(table);
+  return Array.from(table.querySelectorAll('tbody tr'));
+}
+
+/** Indices das colunas uteis (sem a coluna vazia do checkbox de reanalise). */
+function colunasUteisDaTabela(table) {
+  const ths = Array.from(table.querySelectorAll('thead th'));
+  const dados = [];
+  ths.forEach(function (th, i) {
+    if (th.textContent.trim()) dados.push({ indice: i, titulo: th.textContent.trim() });
+  });
+  return dados;
+}
+
+function escaparHTMLRelatorio(texto) {
+  return String(texto).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function exportarTabelaCSV(table) {
+  const colunas = colunasUteisDaTabela(table);
+  const paraCSV = function (campos) {
+    return campos
+      .map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; })
+      .join(';');
+  };
+  const linhas = [paraCSV(colunas.map(function (c) { return c.titulo; }))];
+  linhasCompletasDaTabela(table).forEach(function (tr) {
+    linhas.push(paraCSV(colunas.map(function (c) {
+      return tr.cells[c.indice] ? tr.cells[c.indice].textContent.trim() : '';
+    })));
+  });
+
+  // BOM para o Excel pt-BR abrir os acentos corretamente.
+  const blob = new Blob(['\ufeff' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = (table.id || 'relatorio') + '.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function imprimirTabela(table) {
+  const janela = window.open('', '_blank');
+  if (!janela) return;
+  const colunas = colunasUteisDaTabela(table);
+  const cabecalho = colunas
+    .map(function (c) { return '<th>' + escaparHTMLRelatorio(c.titulo) + '</th>'; })
+    .join('');
+  const corpo = linhasCompletasDaTabela(table)
+    .map(function (tr) {
+      const celulas = colunas
+        .map(function (c) {
+          const valor = tr.cells[c.indice] ? tr.cells[c.indice].textContent.trim() : '';
+          return '<td>' + escaparHTMLRelatorio(valor) + '</td>';
+        })
+        .join('');
+      return '<tr>' + celulas + '</tr>';
+    })
+    .join('');
+  janela.document.write(
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' +
+      escaparHTMLRelatorio(table.id || 'Relatorio') +
+      '</title><style>body{font-family:Arial,sans-serif}table{border-collapse:collapse;width:100%}' +
+      'th,td{border:1px solid #999;padding:4px;font-size:12px;text-align:left}th{background:#eee}</style>' +
+      '</head><body><table><thead><tr>' + cabecalho + '</tr></thead><tbody>' + corpo +
+      '</tbody></table></body></html>'
+  );
+  janela.document.close();
+  janela.focus();
+  janela.print();
+}
 
 // Capturar erros globais JavaScript
 window.addEventListener('error', function(event) {

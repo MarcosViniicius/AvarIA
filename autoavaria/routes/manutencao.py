@@ -15,6 +15,7 @@ from flask import jsonify, request
 from .blueprint import web_bp as app
 from .context import ARCHIVE_FOLDER, ARQUIVO_SAIDA_EXCEL, DIRETORIO_IMAGENS, LOG_CONSUMO_FILE, LOG_PROCESSADOS_FILE
 from ..core.paths import RESULTADOS_DIR
+from ..services import arquivos as acervo
 from ..services import db as db_service
 from ..services import maintenance
 
@@ -68,6 +69,11 @@ def limpar_dados():
                         if os.path.isfile(arquivo_path):
                             os.remove(arquivo_path)
 
+            # Os bytes sumiram: os metadados do acervo também precisam sair,
+            # senão o acervo aponta para arquivos que não existem (o Dashboard
+            # conta pendentes fantasma e o reenvio é recusado como duplicado).
+            acervo.limpar()
+
             if itens_afetados:
                 message = (
                     f"Imagens removidas. Atenção: {itens_afetados} itens no Histórico "
@@ -91,6 +97,11 @@ def limpar_dados():
                     arquivo_path = os.path.join(DIRETORIO_IMAGENS, arquivo)
                     if os.path.isfile(arquivo_path):
                         os.remove(arquivo_path)
+
+            # Só os pendentes foram apagados; as imagens arquivadas continuam
+            # no disco e seus registros precisam sobreviver para o "Ver Imagem"
+            # do Histórico continuar resolvendo pelo nome físico opaco.
+            acervo.limpar(acervo.PASTA_PENDENTES)
 
             if os.path.exists(LOG_PROCESSADOS_FILE):
                 os.remove(LOG_PROCESSADOS_FILE)

@@ -40,62 +40,49 @@ def _sincronizar_edicao_no_banco(sheet_name: str, valores_originais: dict, campo
     Devolve quantos itens foram atualizados. Atualiza TODAS as correspondências
     exatas: a mesma imagem processada em várias execuções gera linhas
     equivalentes (uma por execução), e editar uma delas deve refletir em todas.
+
+    Falha de banco NÃO é engolida: a exceção sobe para a rota, que responde
+    `success: false` — antes virava "salvo com sucesso" com aviso enganoso.
     """
-    try:
-        ids = db.buscar_itens_por_caminho(
-            sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
-        )
-        if not ids:
-            return 0
-        return db.atualizar_itens_campo(ids, campo, novo_valor)
-    except Exception as e:
-        print(f"⚠️ Não foi possível salvar a edição no banco: {e}")
+    ids = db.buscar_itens_por_caminho(
+        sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
+    )
+    if not ids:
         return 0
+    return db.atualizar_itens_campo(ids, campo, novo_valor)
 
 
 def _sincronizar_edicao_completa_no_banco(sheet_name: str, valores_originais: dict, dados_linha: dict) -> int:
     """Mesma ideia de `_sincronizar_edicao_no_banco`, mas para a linha inteira."""
-    try:
-        ids = db.buscar_itens_por_caminho(
-            sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
-        )
-        if not ids:
-            return 0
-        return db.atualizar_itens_completo(ids, dados_linha)
-    except Exception as e:
-        print(f"⚠️ Não foi possível salvar a edição no banco: {e}")
+    ids = db.buscar_itens_por_caminho(
+        sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
+    )
+    if not ids:
         return 0
+    return db.atualizar_itens_completo(ids, dados_linha)
 
 
 def _sincronizar_exclusao_no_banco(sheet_name: str, valores_originais: dict) -> int:
-    try:
-        ids = db.buscar_itens_por_caminho(
-            sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
-        )
-        if not ids:
-            return 0
-        runs = db.excluir_itens(ids)
-        for run_id in runs:
-            db.recalcular_contagens(run_id)
-        return len(ids)
-    except Exception as e:
-        print(f"⚠️ Não foi possível excluir no banco: {e}")
+    ids = db.buscar_itens_por_caminho(
+        sheet_name, valores_originais.get("Caminho da Imagem", ""), valores_originais
+    )
+    if not ids:
         return 0
+    runs = db.excluir_itens(ids)
+    for run_id in runs:
+        db.recalcular_contagens(run_id)
+    return len(ids)
 
 
 def _sincronizar_movimentacao_no_banco(sheet_origem: str, sheet_destino: str, valores_originais: dict, nova_linha: dict) -> int:
-    try:
-        ids = db.buscar_itens_por_caminho(
-            sheet_origem, valores_originais.get("Caminho da Imagem", ""), valores_originais
-        )
-        if not ids:
-            return 0
-        db.mover_itens_categoria(ids, sheet_destino)
-        db.atualizar_itens_completo(ids, nova_linha)
-        return len(ids)
-    except Exception as e:
-        print(f"⚠️ Não foi possível mover no banco: {e}")
+    ids = db.buscar_itens_por_caminho(
+        sheet_origem, valores_originais.get("Caminho da Imagem", ""), valores_originais
+    )
+    if not ids:
         return 0
+    db.mover_itens_categoria(ids, sheet_destino)
+    db.atualizar_itens_completo(ids, nova_linha)
+    return len(ids)
 
 
 def _aviso_sincronizacao(afetados: int) -> str:

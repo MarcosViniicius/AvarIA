@@ -117,7 +117,10 @@ def obter_secoes_mestre() -> Dict[str, Any]:
         categoria = item.get("categoria")
         if not categoria:
             continue
-        chave = _chave_dedup(categoria, item)
+        # A categoria entra na chave: sem o prefixo, uma linha de "Avarias" e
+        # outra de "Uso Interno" com o mesmo produto/peso-vazio/imagem colidiam
+        # e uma delas era descartada (contar_por_categoria já prefixa).
+        chave = (categoria,) + _chave_dedup(categoria, item)
         if chave in vistas:
             continue  # já entrou uma versão (a mais recente, pela ordem)
         vistas[chave] = item

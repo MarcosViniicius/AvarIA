@@ -155,8 +155,10 @@ def verificar_e_corrigir_configuracao(modo_extracao: str = None):
         return False, f"Chave da API do provedor '{provider_name}' não configurada"
 
     try:
-        # Configuração já está em config/config.json (arquivo único)
-        return True, f"Configuração válida ({provider_name} — API Key: {api_key[:8]}...)"
+        # Configuração já está em config/config.json (arquivo único).
+        # A mensagem NÃO inclui nenhum trecho da chave: ela vai para o buffer
+        # de logs/progresso, que é exibido no Dashboard e na tela de Upload.
+        return True, f"Configuração válida (provedor: {provider_name})"
 
     except Exception as e:
         return False, f"Erro ao sincronizar configuração: {e}"

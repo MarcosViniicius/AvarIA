@@ -892,10 +892,11 @@ def reanalisar_execucao(
         itens_por_caminho.setdefault(item["caminho_imagem"], item)
     itens_unicos = list(itens_por_caminho.values())
 
-    # Preservados: tudo da execução que NÃO foi selecionado (mais os
-    # selecionados sem imagem) — copiados intactos para a nova versão.
+    # Preservados: tudo da execução que NÃO foi selecionado — incluindo os
+    # selecionados SEM imagem, que já caem aqui naturalmente (o `caminho_imagem`
+    # deles não está em `caminhos_alvo`). Não somar `sem_imagem` de novo: isso
+    # duplicava cada item sem imagem na nova versão.
     preservados = [item for item in itens if item.get("caminho_imagem") not in caminhos_alvo]
-    preservados += sem_imagem
 
     novo_run_id = db.iniciar_reanalise_de_execucao(raiz_execucao_id, imagens_total=len(itens_unicos))
 
@@ -908,6 +909,7 @@ def reanalisar_execucao(
                     if item.get("categoria") == categoria
                 ])
             db.finalizar_execucao(novo_run_id, "concluido", mensagem="Nenhuma imagem com caminho registrado para reanálise; itens preservados")
+            db.recalcular_contagens(novo_run_id)  # contadores incluem os preservados
             return {"sucesso": True, "run_id": novo_run_id, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0,
                     "selecionados": len(itens_alvo), "preservados": len(preservados), "sem_imagem": len(sem_imagem),
                     "categorias": categorias_filtro}
@@ -984,6 +986,9 @@ def reanalisar_execucao(
             novo_run_id, "concluido", len(novas_avarias), len(novos_usos_internos),
             len(novos_erros), tokens_totais,
         )
+        # A versão nova contém os itens reanalisados + os preservados; sem o
+        # recálculo, o Histórico mostrava só os contadores da seleção.
+        db.recalcular_contagens(novo_run_id)
 
         print(f"✅ REANÁLISE DA EXECUÇÃO #{run_id} CONCLUÍDA -> nova versão #{novo_run_id}")
         return {

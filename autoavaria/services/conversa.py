@@ -238,8 +238,10 @@ def extrair_quantidade(texto: str) -> Optional[int]:
         linha = linha.strip()
         if not linha:
             continue
-        # Descarta linhas que são claramente peso ou dinheiro.
-        if re.search(r"\d\s*(?:kg|g|gramas?|r\$)", linha, re.IGNORECASE):
+        # Descarta linhas que são claramente peso ou dinheiro. O `\b` depois de
+        # "g" evita o falso positivo que engolia quantidade de linhas como
+        # "7 garrafas" e "2 grandes caixas" (o "g" da palavra casava com gramas).
+        if re.search(r"\d\s*(?:kg\b|g\b|gramas?\b|r\$)", linha, re.IGNORECASE):
             continue
         for padrao in _PADROES_QUANTIDADE:
             achado = padrao.search(linha)

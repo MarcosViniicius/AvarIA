@@ -16,6 +16,15 @@
     const modoExtracaoUpload = document.getElementById("modoExtracaoUpload");
 
     let selectedFiles = [];
+    let modoAlteradoPeloUsuario = false;
+
+    // Nomes de arquivo são dados do usuário: nunca interpolar em innerHTML
+    // sem escape (um nome como <img onerror=...> executaria na listagem).
+    function escapeHtml(texto) {
+      return String(texto).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+    }
 
     // Carregar status inicial
     atualizarStatus();
@@ -23,9 +32,18 @@
       .then((response) => response.json())
       .then((config) => {
         const modoSalvo = config.processamento?.modo_extracao;
-        if (modoSalvo && modoExtracaoUpload) modoExtracaoUpload.value = modoSalvo;
+        // Não sobrescrever uma escolha já feita pelo usuário enquanto a
+        // resposta da configuração chegava (corrida com o fetch).
+        if (modoSalvo && modoExtracaoUpload && !modoAlteradoPeloUsuario)
+          modoExtracaoUpload.value = modoSalvo;
       })
       .catch(() => {});
+
+    if (modoExtracaoUpload) {
+      modoExtracaoUpload.addEventListener("change", () => {
+        modoAlteradoPeloUsuario = true;
+      });
+    }
 
     // Event listeners
     selectFilesBtn.addEventListener("click", () => fileInput.click());
@@ -164,12 +182,13 @@
 
         const fileIcon = getFileIcon(file.type, file.name);
         const fileSize = formatFileSize(file.size);
+        const nomeSeguro = escapeHtml(file.name);
 
         fileItem.innerHTML = `
                 <div class="d-flex align-items-center">
                     <i class="${fileIcon} me-3"></i>
                     <div>
-                        <div class="fw-medium">${file.name}</div>
+                        <div class="fw-medium">${nomeSeguro}</div>
                         <small class="text-muted">${fileSize}</small>
                     </div>
                 </div>
@@ -284,7 +303,10 @@
         } else if (!data) {
           showAlert("danger", `O servidor respondeu com erro HTTP ${xhr.status}. Os arquivos foram mantidos na lista para tentar novamente.`);
         } else if (data.success) {
-          showAlert(data.rejeitados?.length ? "warning" : "success", data.message);
+          showAlert(
+            data.ignorados_duplicados?.length ? "warning" : "success",
+            data.message
+          );
           clearFiles();
           atualizarStatus();
         } else {

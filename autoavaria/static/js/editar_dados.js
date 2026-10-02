@@ -271,6 +271,7 @@ function moverItem(sheetOrigem, sheetDestino, linhaId) {
 // Adicionar nova linha
 function adicionarLinha(sheetName) {
   currentSheet = sheetName;
+  currentLineId = null; // sem linha em edição: o botão salva como ADIÇÃO
 
   // Pegar colunas da tabela
   const table = document.getElementById(
@@ -278,7 +279,7 @@ function adicionarLinha(sheetName) {
   );
   const headers = Array.from(table.querySelectorAll("thead th"))
     .map((th) => th.textContent.trim())
-    .filter((header) => header !== "#" && header !== "Ações");
+    .filter((header) => header !== "#" && header !== "Ações" && header !== "");
 
   // Gerar campos do formulário
   let formHtml = "";
@@ -413,7 +414,8 @@ function resetAddModal() {
   modalTitle.innerHTML =
     '<i class="bi bi-plus-lg me-2"></i>Adicionar Nova Linha';
   saveBtn.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar';
-  saveBtn.setAttribute("onclick", "salvarNovaLinha()");
+  // Sem onclick inline: o handler delegado (#addModalSaveBtn) decide entre
+  // adicionar e editar pela presença de currentLineId.
 
   const imagemContainer = document.getElementById("addModalImagePreviewContainer");
   if (imagemContainer) imagemContainer.style.display = "none";
@@ -546,7 +548,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     if (event.target.closest("#addModalSaveBtn")) {
       event.preventDefault();
-      salvarNovaLinha();
+      // O mesmo botão serve os dois modos: edição completa (quando há uma
+      // linha carregada) ou adição. Antes havia onclick inline ALÉM desta
+      // delegação, e o clique disparava os dois POSTs (a edição virava
+      // edição + linha nova duplicada; "Adicionar" criava duas linhas).
+      if (currentLineId !== null && currentSheet) {
+        salvarEdicaoCompleta();
+      } else {
+        salvarNovaLinha();
+      }
     }
   });
 
@@ -638,7 +648,7 @@ function editarLinha(sheetName, linhaId) {
 
   const headers = Array.from(table.querySelectorAll("thead th"))
     .map((th) => th.textContent.trim())
-    .filter((header) => header !== "#" && header !== "Ações");
+    .filter((header) => header !== "#" && header !== "Ações" && header !== "");
 
   console.log("DEBUG headers:", headers);
 
@@ -701,7 +711,7 @@ function editarLinha(sheetName, linhaId) {
             type="text" 
             class="form-control" 
             name="${header}" 
-            value="${currentValue}"
+            value="${escapeHtml(currentValue)}"
             placeholder="Digite ${header.toLowerCase()}"
             ${isRequired ? "required" : ""}
           >
@@ -723,7 +733,7 @@ function editarLinha(sheetName, linhaId) {
   modalTitle.innerHTML =
     '<i class="bi bi-pencil-square me-2"></i>Editar Linha Completa';
   saveBtn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar Alterações';
-  saveBtn.setAttribute("onclick", "salvarEdicaoCompleta()");
+  // Sem onclick inline (ver resetAddModal): a delegação decide pelo estado.
 
   exibirImagemNoModal(row, "addModalImagePreviewContainer", "addModalImagePreview");
 

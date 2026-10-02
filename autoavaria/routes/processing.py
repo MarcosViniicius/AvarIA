@@ -455,6 +455,10 @@ def iniciar_processamento():
         # arquivos compactados, evitando que dois POST iniciem dois pipelines.
         app_state.processamento_ativo = True
 
+    # `iniciado` controla a reserva: qualquer saída antes de a thread existir
+    # (pasta ausente, nenhuma imagem, erro) precisa devolver o flag, senão a
+    # aplicação fica presa em "Processamento já em andamento" até reiniciar.
+    iniciado = False
     try:
         # Verificar se há imagens para processar
         if not os.path.exists(DIRETORIO_IMAGENS):
@@ -495,11 +499,14 @@ def iniciar_processamento():
             target=processar_em_background, args=(modo_extracao, resultado_extracao, forcar_reprocessamento)
         )
         thread.start()
+        iniciado = True
 
         return jsonify({"success": True, "message": "Processamento iniciado!"})
     except Exception as e:
-        app_state.processamento_ativo = False
         return jsonify({"success": False, "message": f"Não foi possível iniciar o processamento: {e}"}), 500
+    finally:
+        if not iniciado:
+            app_state.processamento_ativo = False
 
 
 @app.route("/cancelar", methods=["POST"])

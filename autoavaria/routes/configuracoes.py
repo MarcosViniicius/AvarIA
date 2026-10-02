@@ -33,17 +33,21 @@ def configuracoes():
 
 
 def _config_sem_chaves(config: dict) -> dict:
-    """Copia a config substituindo as chaves de API por um marcador.
+    """Copia a config substituindo chaves/tokens por um marcador.
 
     As chamadas que consomem este endpoint (ver rotas abaixo) só precisam de
     preferências como `processamento.modo_extracao` ou
-    `interface.logs_detalhados_aplicacao` — nunca da chave em si. Mandar a
-    chave real pela rede sem necessidade é exposição desnecessária.
+    `interface.logs_detalhados_aplicacao` — nunca de segredo nenhum. Mandar a
+    chave/token real pela rede sem necessidade é exposição desnecessária.
     """
     config_seguro = copy.deepcopy(config)
     for campo, valor in config_seguro.get("api", {}).items():
         if campo.endswith("_api_key") and valor:
             config_seguro["api"][campo] = "***"
+    # O token do invertexto é gravado fora de `api` e também não pode vazar.
+    invertexto_cfg = config_seguro.get("invertexto")
+    if isinstance(invertexto_cfg, dict) and invertexto_cfg.get("token"):
+        invertexto_cfg["token"] = "***"
     return config_seguro
 
 
@@ -154,13 +158,16 @@ def download_config():
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
 
-        # Nunca exportar as chaves de API em texto puro — esse backup é só das
-        # preferências de processamento/interface. Quem precisar restaurar a
-        # chave configura de novo pela tela de Configurações.
+        # Nunca exportar as chaves de API (nem o token do invertexto) em texto
+        # puro — esse backup é só das preferências de processamento/interface.
+        # Quem precisar restaurar configura de novo pela tela de Configurações.
         config_seguro = copy.deepcopy(config)
         for campo, valor in config_seguro.get("api", {}).items():
             if campo.endswith("_api_key") and valor:
                 config_seguro["api"][campo] = "***REMOVIDA_POR_SEGURANCA***"
+        invertexto_cfg = config_seguro.get("invertexto")
+        if isinstance(invertexto_cfg, dict) and invertexto_cfg.get("token"):
+            invertexto_cfg["token"] = "***REMOVIDA_POR_SEGURANCA***"
 
         response = make_response(json.dumps(config_seguro, indent=2, ensure_ascii=False))
         response.headers["Content-Type"] = "application/json; charset=utf-8"

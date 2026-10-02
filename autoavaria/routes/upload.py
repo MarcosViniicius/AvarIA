@@ -14,6 +14,19 @@ from ..services.config_service import verificar_e_corrigir_configuracao
 MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 
 
+def _nome_original_seguro(nome: str) -> str:
+    """Sanitiza o nome do arquivo PRESERVANDO a extensão.
+
+    `secure_filename("测试.zip")` devolve "zip": o não-ASCII é removido e o
+    ponto vira separador de sufixo, então o arquivo perderia a extensão e nunca
+    seria reconhecido como ZIP/imagem. Aqui o radical é sanitizado e a extensão
+    original é reanexada.
+    """
+    base, extensao = os.path.splitext(str(nome or ""))
+    radicao = secure_filename(base) or "arquivo"
+    return f"{radicao}{extensao.lower()}"
+
+
 @app.route("/upload")
 def upload_page():
     """Página de upload."""
@@ -43,7 +56,7 @@ def upload_files():
         ignorados_duplicados = []
         for file in files:
             if file and allowed_file(file.filename):
-                filename_original = secure_filename(file.filename)
+                filename_original = _nome_original_seguro(file.filename)
                 dados = file.read()
 
                 # Acervo: nome físico aleatório (nunca colide) + metadados no
