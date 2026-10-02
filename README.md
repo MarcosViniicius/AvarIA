@@ -26,6 +26,26 @@ O resultado de cada execução fica registrado no histórico (SQLite), com **ver
 
 ## 🚀 Início Rápido
 
+### Jeito mais fácil (1 clique)
+
+Não precisa saber programar: os scripts abaixo criam o ambiente, instalam o que
+falta, sobem o sistema e abrem o navegador sozinhos.
+
+| Sistema | Como iniciar |
+|---|---|
+| **Windows** | dê **dois cliques** em `iniciar.bat` |
+| **Linux** | rode `./iniciar.sh` na pasta do projeto |
+| **macOS** | dê **dois cliques** em `Iniciar AvarIA.command` (ou `bash iniciar.sh`) |
+
+- Na primeira vez pode demorar alguns minutos (instalação das dependências).
+- Nas próximas, é só rodar de novo — abre em segundos.
+- Para encerrar: feche a janela do script ou aperte `Ctrl+C`.
+- Endereço: **http://localhost:5000**
+
+### Jeito manual
+
+Para quem prefere rodar os comandos passo a passo:
+
 ### Pré-requisitos
 - Python 3.8+
 - Pip (gerenciador de pacotes Python)

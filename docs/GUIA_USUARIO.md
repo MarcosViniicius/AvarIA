@@ -14,6 +14,16 @@ Sem jargão técnico. Se você desenvolve, vá para `GUIA_DESENVOLVEDOR.md`.
 
 ## 2. Passo a passo
 
+### Iniciar o sistema (antes de tudo)
+
+- **Windows:** dê dois cliques em `iniciar.bat` (na pasta do projeto).
+- **Linux:** rode `./iniciar.sh`.
+- **macOS:** dê dois cliques em `Iniciar AvarIA.command`.
+
+Abre uma janela, o sistema instala o que falta (só na primeira vez) e o navegador
+abre sozinho em `http://localhost:5000`. Para desligar, feche a janela ou aperte
+`Ctrl+C`.
+
 ### 2.1 Enviar imagens
 
 - Acesse `http://localhost:5000` → **Upload**.

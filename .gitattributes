@@ -1,0 +1,6 @@
+# Normalização de fim de linha: os scripts de inicialização precisam de LF
+# para rodar no Linux/macOS, e CRLF no Windows para o .bat.
+* text=auto
+*.sh text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
