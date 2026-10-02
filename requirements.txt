@@ -1,6 +1,6 @@
 
 
-# Dependências do Analisador de Avarias - Interface Web
+# Dependências do AvarIA - Interface Web
 
 # Framework Web
 Flask>=3.0.0

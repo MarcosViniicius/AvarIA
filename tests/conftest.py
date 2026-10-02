@@ -1,6 +1,6 @@
 """Configuração compartilhada dos testes: expõe o pacote (na raiz do projeto)
 e fornece um banco SQLite temporário isolado (nunca toca em
-database/autoavaria.db real)."""
+database/avariaia.db real)."""
 
 import sys
 from pathlib import Path

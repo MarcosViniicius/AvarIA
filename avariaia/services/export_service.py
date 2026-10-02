@@ -117,7 +117,14 @@ def _aplicar_formatacao_excel(writer, secoes: Dict[str, pd.DataFrame]) -> None:
 
 def _cabecalho(titulo: str) -> list:
     linha = "=" * _LARGURA_CABECALHO
-    return [linha, titulo, f"Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", linha, ""]
+    return [
+        linha,
+        titulo,
+        f"Data de Geração: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
+        "Gerado por AvarIA",
+        linha,
+        "",
+    ]
 
 
 def _rodape() -> list:

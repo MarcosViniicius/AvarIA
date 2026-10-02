@@ -23,7 +23,7 @@ ARQUIVO_SAIDA_EXCEL = RESULTADOS_DIR / "Relatorio_Mestre_Produtos.xlsx"
 LOG_CONSUMO_FILE = LOGS_DIR / "log_consumo_tokens.txt"
 LOG_PROCESSADOS_FILE = LOGS_DIR / "log_mestre.txt"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DATABASE_FILE = DATABASE_DIR / "autoavaria.db"
+DATABASE_FILE = DATABASE_DIR / "avariaia.db"
 
 def ensure_directories() -> None:
     for path in [UPLOAD_FOLDER, ARCHIVE_FOLDER, RESULTADOS_DIR, LOGS_DIR, CONFIG_DIR, DATABASE_DIR]:

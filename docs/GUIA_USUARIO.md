@@ -90,4 +90,4 @@ Sem jargão técnico. Se você desenvolve, vá para `GUIA_DESENVOLVEDOR.md`.
 - `imagens_processadas/` — arquivadas após sucesso.
 - `resultados/` — Excel/TXT gerados.
 - `logs/` — `log_mestre.txt` (processadas), `log_consumo_tokens.txt`, `log_reanalise.txt`.
-- `database/autoavaria.db` — histórico (não mexa manualmente).
+- `database/avariaia.db` — histórico (não mexa manualmente).

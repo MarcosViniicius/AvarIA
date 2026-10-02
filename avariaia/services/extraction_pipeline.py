@@ -403,7 +403,7 @@ def main(
             Se omitido, usa `processamento.modo_extracao` do config.json.
     """
     print("\n" + "=" * 70)
-    print("🚀 ANALISADOR MESTRE DE IMAGENS E MENSAGENS")
+    print("🚀 AvarIA · PROCESSAMENTO DE IMAGENS E MENSAGENS")
     print(f"⏰ Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
     print("=" * 70 + "\n")
 

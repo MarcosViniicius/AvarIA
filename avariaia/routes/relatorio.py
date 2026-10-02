@@ -325,7 +325,7 @@ def download_relatorio_txt():
 
             secoes_para_escrever[sheet_name] = df
 
-        escrever_txt_detalhado(txt_path, "RELATÓRIO COMPLETO DE ANÁLISE DE PRODUTOS", secoes_para_escrever)
+        escrever_txt_detalhado(txt_path, "AvarIA — RELATÓRIO COMPLETO DE ANÁLISE DE PRODUTOS", secoes_para_escrever)
 
         # Enviar arquivo
         response = send_file(

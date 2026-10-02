@@ -1,5 +1,5 @@
 """Testes da camada de persistência (services/db.py), usando um banco SQLite
-temporário isolado via a fixture `tmp_db` (nunca toca em database/autoavaria.db)."""
+temporário isolado via a fixture `tmp_db` (nunca toca em database/avariaia.db)."""
 
 
 def test_ciclo_de_vida_de_uma_execucao(tmp_db):
@@ -178,3 +178,74 @@ class TestVersionamento:
         tmp_db.iniciar_reanalise_de_execucao(run_a)
         assert len(tmp_db.listar_versoes(run_a)) == 2
         assert len(tmp_db.listar_versoes(run_b)) == 1
+
+
+class TestMigracaoBancoLegado:
+    """Rebrand AvarIA: o banco mudou de autoavaria.db para avariaia.db."""
+
+    def _criar_sqlite(self, caminho, valor):
+        import sqlite3
+
+        con = sqlite3.connect(str(caminho))
+        con.execute("CREATE TABLE marco (valor TEXT)")
+        con.execute("INSERT INTO marco (valor) VALUES (?)", (valor,))
+        con.commit()
+        con.close()
+
+    def _ler_marco(self, caminho):
+        import sqlite3
+
+        con = sqlite3.connect(str(caminho))
+        valor = con.execute("SELECT valor FROM marco").fetchone()[0]
+        con.close()
+        return valor
+
+    def _apontar_para(self, monkeypatch, tmp_path, novo):
+        from avariaia.services import db as db_module
+
+        monkeypatch.setattr(db_module, "DATABASE_DIR", tmp_path)
+        monkeypatch.setattr(db_module, "DATABASE_FILE", novo)
+        return db_module
+
+    def test_copia_o_banco_antigo_e_preserva_backup(self, tmp_path, monkeypatch):
+        legado = tmp_path / "autoavaria.db"
+        self._criar_sqlite(legado, "historico-antigo")
+        novo = tmp_path / "avariaia.db"
+        db_module = self._apontar_para(monkeypatch, tmp_path, novo)
+
+        assert db_module.migrar_banco_legado() is True
+
+        assert novo.exists()
+        assert self._ler_marco(novo) == "historico-antigo"
+        assert not legado.exists()
+        assert (tmp_path / "autoavaria.db.bak").exists()
+
+    def test_nunca_sobrescreve_banco_novo_existente(self, tmp_path, monkeypatch):
+        legado = tmp_path / "autoavaria.db"
+        self._criar_sqlite(legado, "antigo")
+        novo = tmp_path / "avariaia.db"
+        self._criar_sqlite(novo, "atual")
+        db_module = self._apontar_para(monkeypatch, tmp_path, novo)
+
+        assert db_module.migrar_banco_legado() is False
+
+        assert self._ler_marco(novo) == "atual"
+        assert legado.exists()  # intocado
+
+    def test_init_db_dispara_a_migracao(self, tmp_path, monkeypatch):
+        legado = tmp_path / "autoavaria.db"
+        self._criar_sqlite(legado, "x")
+        novo = tmp_path / "avariaia.db"
+        db_module = self._apontar_para(monkeypatch, tmp_path, novo)
+
+        db_module.init_db()
+
+        assert novo.exists()
+        assert (tmp_path / "autoavaria.db.bak").exists()
+        with db_module.get_connection() as conn:
+            tabelas = {
+                r["name"]
+                for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        assert "processing_runs" in tabelas
+        assert "report_items" in tabelas

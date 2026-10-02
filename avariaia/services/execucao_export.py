@@ -72,7 +72,7 @@ def gerar_txt_execucao(run_id: int, dados_por_categoria: Dict) -> str:
         for categoria, sheet in dados_por_categoria.items()
         if sheet.get("dados")
     }
-    escrever_txt_detalhado(caminho, f"HISTÓRICO DE EXECUÇÃO #{run_id}", secoes)
+    escrever_txt_detalhado(caminho, f"AvarIA — HISTÓRICO DE EXECUÇÃO #{run_id}", secoes)
     return nome_arquivo
 
 
@@ -163,7 +163,7 @@ def gerar_unificado_execucao(
     nome_arquivo = f"Relatorio_Unificado_Execucao{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{formato}"
     caminho = str(RESULTADOS_DIR / nome_arquivo)
 
-    titulo = f"RELATÓRIO UNIFICADO - EXECUÇÃO #{run_id}"
+    titulo = f"AvarIA — RELATÓRIO UNIFICADO - EXECUÇÃO #{run_id}"
     if formato == "txt":
         escrever_txt_compacto(caminho, titulo, secoes_saida)
     else:

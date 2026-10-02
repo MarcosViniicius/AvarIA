@@ -78,7 +78,7 @@ Detalhe do processamento e das regras de classificação: `docs/ARQUITETURA_PROC
 | `configuracoes.py` | `GET /configuracoes`, `GET/POST /api/configuracoes` (mascara `***`), `POST /salvar_configuracao`, `GET /download_config` |
 | `ai_config.py` | `GET /api/listar_modelos/<provider>` |
 
-## 5. Banco (SQLite, `database/autoavaria.db`)
+## 5. Banco (SQLite, `database/avariaia.db`)
 
 - `processing_runs(id, tipo, status, imagens_total, avarias, uso_interno, erros, tokens, mensagem, raiz_execucao_id, versao)` — reanálise = `versao = max+1`.
 - `report_items(run_id, categoria, produto, peso, marca, codigo_barras, detalhes, observacao, caminho, quantidade)`.

@@ -102,7 +102,7 @@ class TestStaticVersioning:
                 corpo = m.group(1).strip()
                 # bootstrap de dados (tema, RUN_ID) é legítimo; lógica não
                 assert len(corpo) < 800, f"{pagina} tem JS inline com {len(corpo)} chars"
-                assert "function " not in corpo or "RUN_ID" in corpo or "autoavaria-theme" in corpo, (
+                assert "function " not in corpo or "RUN_ID" in corpo or "avariaia-theme" in corpo, (
                     f"{pagina} tem função JS inline"
                 )
 

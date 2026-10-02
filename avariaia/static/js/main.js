@@ -1,5 +1,5 @@
 /**
- * JavaScript principal para o Analisador de Avarias
+ * JavaScript principal do AvarIA
  * Funcionalidades: monitoramento de progresso, alertas, animações, etc.
  */
 
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", function () {
  * Inicialização da aplicação - otimizada
  */
 function initializeApp() {
-  console.log("🚀 Inicializando Analisador de Avarias...");
+  console.log("🚀 Inicializando AvarIA...");
 
   setupThemeToggle();
   hoistModalsToBody();
@@ -141,7 +141,12 @@ function setupThemeToggle() {
 
   const ler = () => {
     try {
-      return localStorage.getItem("autoavaria-theme") || "escuro";
+      // Chave nova com fallback para a antiga (não perder o tema salvo).
+      return (
+        localStorage.getItem("avariaia-theme") ||
+        localStorage.getItem("autoavaria-theme") ||
+        "escuro"
+      );
     } catch (e) {
       return "escuro";
     }
@@ -169,7 +174,7 @@ function setupThemeToggle() {
     el.addEventListener("click", () => {
       const pref = el.getAttribute("data-tema");
       try {
-        localStorage.setItem("autoavaria-theme", pref);
+        localStorage.setItem("avariaia-theme", pref);
       } catch (e) {
         /* localStorage indisponível: aplica só nesta sessão */
       }
@@ -1052,5 +1057,5 @@ window.AnalisadorAvarias = {
 };
 
 // Log de inicialização
-console.log("📱 Analisador de Avarias - JavaScript carregado");
+console.log("📱 AvarIA - JavaScript carregado");
 console.log("🔧 Utilitários disponíveis em: window.AnalisadorAvarias");

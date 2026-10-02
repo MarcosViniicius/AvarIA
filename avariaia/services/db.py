@@ -9,6 +9,7 @@ tela de "Histórico de Relatórios".
 """
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -153,6 +154,40 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def migrar_banco_legado() -> bool:
+    """Migra o banco do nome antigo (`autoavaria.db`) para o novo (`avariaia.db`).
+
+    Copia (não move) — o SQLite é a fonte da verdade do histórico, então o
+    arquivo antigo é preservado como `.bak` antes de qualquer coisa. Só roda
+    quando o novo ainda não existe e o antigo existe; se a cópia falhar,
+    levanta erro para o boot abortar em vez de criar um banco vazio por cima
+    do histórico. Usa `DATABASE_DIR`/`DATABASE_FILE` do módulo (patcháveis nos
+    testes).
+    """
+    import shutil
+
+    legado = DATABASE_DIR / "autoavaria.db"
+    if DATABASE_FILE.exists() or not legado.exists():
+        return False
+
+    try:
+        shutil.copy2(legado, DATABASE_FILE)
+    except OSError as e:
+        raise RuntimeError(
+            f"Não foi possível migrar o banco {legado} para {DATABASE_FILE}: {e}"
+        ) from e
+
+    backup = legado.parent / (legado.name + ".bak")
+    try:
+        if not backup.exists():
+            os.replace(legado, backup)
+    except OSError:
+        pass  # o arquivo antigo continua no lugar (já é um backup natural)
+
+    print(f"📦 Banco migrado: {legado.name} -> {DATABASE_FILE.name} (backup preservado)")
+    return True
+
+
 @contextmanager
 def get_connection():
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -168,6 +203,7 @@ def get_connection():
 
 def init_db() -> None:
     """Cria as tabelas do banco (idempotente) e aplica migrações de colunas. Chamado na inicialização do app."""
+    migrar_banco_legado()
     with get_connection() as conn:
         conn.executescript(SCHEMA)
         _migrar_colunas_report_items(conn)

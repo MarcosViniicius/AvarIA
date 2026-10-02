@@ -28,5 +28,5 @@ docs/INDICE_DOCUMENTACAO.md        ← este arquivo
 - `avariaia/routes/` = HTTP/Flask (fino, delega para services).
 - `avariaia/core/paths.py` = única fonte de pastas/arquivos.
 - Excel mestre (`resultados/Relatorio_Mestre_Produtos.xlsx`) = fonte de trabalho do usuário.
-- SQLite (`database/autoavaria.db`) = histórico, versionamento, catálogo.
+- SQLite (`database/avariaia.db`) = histórico, versionamento, catálogo.
 - Os dois andam juntos: cada lote persiste em **ambos** antes de marcar a imagem como processada.

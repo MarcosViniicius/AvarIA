@@ -4,7 +4,7 @@ Mapa canônico da suíte. Leia antes de criar um teste novo — **não duplique*
 
 ## Regras
 
-- `tmp_db` (`conftest.py`) para tudo que toca `db`/`catalogo`. Nunca toque em `database/autoavaria.db`.
+- `tmp_db` (`conftest.py`) para tudo que toca `db`/`catalogo`. Nunca toque em `database/avariaia.db`.
 - Mocke `barcode.ler_imagem` (não dependa de opencv/zxing). Imagem sintética só em `test_barcode.py` com `importorskip`.
 - IA real nunca: `MagicMock` provider + patch `ai_extraction.extrair_dados_de_lote`.
 - Um comportamento, um dono. Consulte a tabela antes de adicionar.

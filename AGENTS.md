@@ -21,7 +21,7 @@ python -m pytest tests/test_barcode.py -q
 python -m pytest tests/test_classificacao_imagens.py tests/test_processamento_backend.py -q
 ```
 
-`pytest.ini`: `testpaths = tests`. Fixture `tmp_db` (`tests/conftest.py`) isola o SQLite em `tmp_path` — **nunca toque em `database/autoavaria.db` nos testes**.
+`pytest.ini`: `testpaths = tests`. Fixture `tmp_db` (`tests/conftest.py`) isola o SQLite em `tmp_path` — **nunca toque em `database/avariaia.db` nos testes**.
 
 ## 3. Mapa do código
 

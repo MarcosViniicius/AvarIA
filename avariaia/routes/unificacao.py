@@ -217,7 +217,7 @@ def processar_unificacao_txt(secoes_filtro=None, colunas_filtro=None, return_con
                 "com coluna de produto. A seção de erros não entra no formato compacto."
             ), None
 
-        titulo = "RELATÓRIO UNIFICADO DE AVARIAS E USO INTERNO"
+        titulo = "AvarIA — RELATÓRIO UNIFICADO DE AVARIAS E USO INTERNO"
         escrever_txt_compacto(arquivo_unificado, titulo, secoes_para_escrever)
 
         if return_contenido:
