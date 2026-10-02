@@ -5,6 +5,7 @@ Rotas de visualização e download do relatório: `/relatorio`,
 """
 
 import os
+import uuid
 from datetime import datetime
 
 import pandas as pd
@@ -52,7 +53,22 @@ def _resolver_imagem(nome_original: str):
     opaco, e há fallback para o nome-base (referências antigas a `IMG-x_2.jpg`,
     cujo conteúdo idêntico foi consolidado em `IMG-x.jpg`). Sem registro, cai
     para as pastas oficiais — mantém funcionando acervo ainda não migrado.
+
+    O nome original é uma IDENTIDADE de negócio: nunca contém diretórios.
+    Qualquer tentativa de caminho (`..`, `\\`, `/`, `C:`) é rejeitada antes de
+    tocar no disco — sem isso, o parâmetro `<path:filename>` da rota serviria
+    qualquer imagem do computador.
     """
+    nome_original = (nome_original or "").strip()
+    normalizado = nome_original.replace("\\", "/")
+    if (
+        not normalizado
+        or normalizado in (".", "..")
+        or "/" in normalizado
+        or ":" in normalizado
+    ):
+        return None
+
     try:
         from ..services import arquivos as acervo
 
@@ -76,9 +92,11 @@ def visualizar_relatorio():
     """Página de visualização do relatório - mostra só a última execução
     registrada no banco (services/db.py), não o histórico acumulado inteiro.
 
-    Os botões de exportação (Excel/TXT/Unificar) continuam operando sobre o
-    Excel mestre completo - ver templates/relatorio.html - de propósito,
-    para quem quiser baixar o histórico todo continuar podendo.
+    A unificação acompanha o que está na tela: o modal opera SOMENTE a execução
+    exibida (rotas escopadas /historico/execucao/<id>/unificar|enviar_invertexto
+    - ver templates/relatorio.html). Os botões Excel/TXT continuam exportando o
+    histórico completo (visão mestre), de propósito, para quem quiser baixar
+    tudo continuar podendo.
     """
     execucoes = db_service.listar_execucoes(limite=1)
     if not execucoes:
@@ -172,7 +190,11 @@ def download_relatorio():
         secoes_json = request.args.get('secoes')
         colunas_json = request.args.get('colunas')
 
-        xlsx_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+        # Nome único por requisição: com timestamp de minuto (e sem sufixo), duas
+        # pessoas baixando ao mesmo tempo usavam o MESMO temporário e uma remoção
+        # apagava o arquivo que a outra ainda estava enviando.
+        sufixo = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:6]}'
+        xlsx_filename = f'Relatorio_Avarias_{sufixo}.xlsx'
         xlsx_path = os.path.join(BASE_PATH, "resultados", f"temp_{xlsx_filename}")
 
         if secoes_json and colunas_json:
@@ -267,7 +289,9 @@ def download_relatorio_txt():
             colunas_por_secao_filtradas = colunas_por_secao
 
         # Criar arquivo temporário para o TXT
-        txt_filename = f'Relatorio_Avarias_{datetime.now().strftime("%Y%m%d_%H%M")}.txt'
+        # Nome único por requisição (mesma razão do download em Excel).
+        sufixo = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{uuid.uuid4().hex[:6]}'
+        txt_filename = f'Relatorio_Avarias_{sufixo}.txt'
         txt_path = os.path.join(BASE_PATH, "resultados", txt_filename)
 
         # Ordem de exibição: Avarias, depois Uso Interno, depois o resto.

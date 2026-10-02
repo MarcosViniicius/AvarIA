@@ -19,6 +19,7 @@ from ..services.export_service import (
     filtrar_colunas,
     renderizar_txt_compacto,
 )
+from ..services.relatorio_view import _construir_dados_relatorio
 from ..services.unification import (
     renderizar_secciones_como_texto,
     unificar_itens_avarias,
@@ -38,20 +39,17 @@ def _sem_colunas_internas(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _sheets_da_ultima_execucao():
-    """Sheets do relatório para unificação, a partir do BANCO.
+    """Sheets do relatório MESTRE para a unificação legada, a partir do BANCO.
 
-    Antes lia a ÚLTIMA execução registrada. Isso quebrava em dois casos reais:
-    (1) uma execução interrompida/falha deixava uma "última execução" vazia, e
-    a unificação passava a mirar nada; (2) na tela de Relatório o botão
-    "Unificar relatório" promete o relatório INTEIRO, mas só recebia a última
-    execução.
+    É o escopo dos endpoints antigos de unificação do relatório inteiro
+    (/api/unificar_relatorio, /api/enviar_invertexto e /api/opcoes_unificacao
+    SEM run_id) e do fallback da tela de Relatório quando ainda não há execução
+    no banco. A tela de Relatório COM execução unifica apenas a execução
+    exibida (ver _sheets_de_execucao); a tela de Histórico também é escopada,
+    montando as sheets a partir de `obter_execucao` diretamente.
 
-    Agora usa a visão mestre (`services/mestre.py`): todas as execuções,
-    deduplicadas, a mesma fonte do relatório que aparece na tela. O nome da
-    função ficou por compatibilidade — quem precisa de UMA execução é a tela de
-    Histórico, que monta as sheets a partir de `obter_execucao` diretamente.
-
-    Retorna None se não houver nada no banco (quem chama decide como sinalizar).
+    Usa a visão mestre (`services/mestre.py`): todas as execuções,
+    deduplicadas. Retorna None se não houver nada no banco.
     """
     from ..services import mestre
 
@@ -65,6 +63,28 @@ def _sheets_da_ultima_execucao():
             columns=info["colunas"],
         )
         for categoria, info in secoes.items()
+    }
+
+
+def _sheets_de_execucao(run_id: int):
+    """Sheets de UMA execução específica (mesma visão da tela de Relatório).
+
+    Usado pela unificação escopada da tela de Relatório: ela mostra apenas a
+    última execução, então o modal precisa enxergar exatamente as seções/colunas
+    daquela execução — nunca o acumulado do mestre.
+    """
+    execucao = db_service.obter_execucao(run_id)
+    if not execucao:
+        return None
+    dados = _construir_dados_relatorio(execucao["itens"])
+    if not dados:
+        return None
+    return {
+        categoria: pd.DataFrame(
+            [{c: linha.get(c) for c in info["colunas"]} for linha in info["dados"]],
+            columns=info["colunas"],
+        )
+        for categoria, info in dados.items()
     }
 
 
@@ -286,21 +306,31 @@ def api_unificar_relatorio():
 
 @app.route("/download_relatorio_unificado/<filename>")
 def download_relatorio_unificado(filename):
-    """Download do relatório unificado."""
+    """Download do relatório unificado.
+
+    O nome vem da URL: aceita só o formato gerado pelo app, sem diretórios,
+    sem `..` e com extensão exportável — fecha o path traversal no Windows
+    (barra invertida é separador e `..` sobe diretório).
+    """
     try:
-        # Validar nome do arquivo (segurança)
-        if not filename.startswith("Relatorio_Unificado_"):
+        nome = (filename or "").replace("\\", "/")
+        if (
+            not nome.startswith("Relatorio_Unificado_")
+            or "/" in nome
+            or ".." in nome
+            or not nome.lower().endswith((".xlsx", ".txt"))
+        ):
             return jsonify({"error": "Arquivo inválido"}), 400
 
-        caminho = os.path.join(BASE_PATH, "resultados", filename)
+        caminho = os.path.join(BASE_PATH, "resultados", nome)
 
-        if not os.path.exists(caminho):
+        if not os.path.isfile(caminho):
             return jsonify({"error": "Arquivo não encontrado"}), 404
 
         return send_file(
             caminho,
             as_attachment=True,
-            download_name=filename
+            download_name=nome
         )
 
     except Exception as e:
@@ -352,11 +382,22 @@ def api_enviar_invertexto():
 
 @app.route("/api/opcoes_unificacao")
 def api_opcoes_unificacao():
-    """API para obter seções e colunas disponíveis para unificação."""
+    """API para obter seções e colunas disponíveis para unificação.
+
+    Com ``?run_id=N``, devolve as opções SOMENTE daquela execução (é o que a
+    tela de Relatório usa, escopada à execução exibida). Sem o parâmetro,
+    mantém o comportamento histórico: a visão mestre (todas as execuções).
+    """
     try:
-        sheets = _sheets_da_ultima_execucao()
-        if sheets is None:
-            return jsonify({"error": "Nenhuma execução encontrada"}), 404
+        run_id = request.args.get("run_id", type=int)
+        if run_id is not None:
+            sheets = _sheets_de_execucao(run_id)
+            if sheets is None:
+                return jsonify({"error": "Execução não encontrada ou sem itens"}), 404
+        else:
+            sheets = _sheets_da_ultima_execucao()
+            if sheets is None:
+                return jsonify({"error": "Nenhuma execução encontrada"}), 404
 
         # Processar cada sheet para obter colunas após unificação
         secoes = []

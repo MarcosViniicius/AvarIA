@@ -400,9 +400,12 @@ endblock %} {% block head %}
 
 {% include "_modal_imagem.html" %}
 
+{# A unificação da tela de Relatório opera SOMENTE a execução exibida (a
+   mesma que os cards/tabelas mostram); sem execução (fallback do Excel
+   antigo), não há o que escopar e o modal cai para o relatório completo. #}
+{% set escopo = 'execucao' if execucao else 'mestre' %}
+{% set com_selecao = true %}
 {% include "_modal_unificacao.html" %}
-
-{% include "_modal_imagem.html" %}
 
 {% endblock %}
 
@@ -417,8 +420,9 @@ endblock %} {% block head %}
      com a tela de Historico de execucao). -->
 <script>
   window.UNIFICACAO = {
-    escopo: "mestre",
-    comSelecao: true,
+    escopo: "{{ 'execucao' if execucao else 'mestre' }}",
+    {% if execucao %}runId: {{ execucao.id }},
+    {% endif %}comSelecao: true,
     invertextoUrl: {{ (dados_invertexto.url if dados_invertexto else 'https://www.invertexto.com/autoava') | tojson }},
   };
 </script>

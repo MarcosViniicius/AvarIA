@@ -6,7 +6,7 @@ daquela execução — os dados vêm do banco (services/db.py), não do Excel.
 """
 
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 
@@ -16,6 +16,7 @@ from .export_service import (
     escrever_txt_compacto,
     escrever_txt_detalhado,
     escrever_xlsx,
+    filtrar_colunas,
     renderizar_txt_compacto,
 )
 from .unification import renderizar_secciones_como_texto, unificar_itens_avarias, unificar_itens_uso_interno
@@ -75,47 +76,104 @@ def gerar_txt_execucao(run_id: int, dados_por_categoria: Dict) -> str:
     return nome_arquivo
 
 
-def gerar_unificado_execucao(run_id: int, dados_por_categoria: Dict, formato: str = "xlsx", return_contenido: bool = False) -> Tuple[str, int]:
-    """Gera um relatório unificado (Avarias + Uso Interno) escopado a esta execução.
+def montar_secoes_unificadas(
+    dados_por_categoria: Dict,
+    formato: str = "xlsx",
+    secoes: Optional[list] = None,
+    colunas: Optional[Dict] = None,
+) -> Dict[str, pd.DataFrame]:
+    """Monta as seções unificadas de uma execução, aplicando o recorte pedido.
 
-    Retorna (nome_archivo, total_itens_unificados). O nome do archivo começa
-    com "Relatorio_Unificado_" de propósito, para reaproveitar a rota de
-    download já existente (``download_relatorio_unificado``).
+    ``secoes=None`` mantém o comportamento histórico: Avarias + Uso Interno
+    (as únicas unificáveis), sem Erros. Quando ``secoes`` é informado, só as
+    seções listadas entram; no xlsx, "Erros de Análise" também pode entrar
+    (cru, sem unificação — não faz sentido consolidar erros).
 
-    Si ``return_contenido=True``, añade un tercer elemento com el texto
-    visible de lo generado (para mostrar/copiar en pantalla).
+    Devolve ``{nome_secao: DataFrame}``; vazio significa que a seleção não
+    produziu nada (quem chama decide como sinalizar).
     """
     avarias = dados_por_categoria.get("Avarias", {}).get("dados", [])
     uso_interno = dados_por_categoria.get("Uso Interno", {}).get("dados", [])
+    erros = dados_por_categoria.get("Erros de Análise", {}).get("dados", [])
 
-    # `id_linha` é técnica: identifica o item no banco para a tela de Histórico
-    # editar/excluir (ver services/relatorio_view.py). Num relatório de
-    # auditoria ela não tem sentido e, ao consolidar um grupo, acabava fixando
-    # o id de UM item arbitrário do grupo como se fosse o do produto unificado.
-    df_avarias_unif = _unificar_sem_colunas_internas(avarias, unificar_itens_avarias)
-    df_uso_unif = _unificar_sem_colunas_internas(uso_interno, unificar_itens_uso_interno)
-    total_itens = len(df_avarias_unif) + len(df_uso_unif)
+    selecionadas = set(secoes) if secoes else None
+    colunas = colunas or {}
+    secoes_saida: Dict[str, pd.DataFrame] = {}
+
+    if (selecionadas is None or "Avarias" in selecionadas) and avarias:
+        df = _unificar_sem_colunas_internas(avarias, unificar_itens_avarias)
+        df = filtrar_colunas(df, colunas.get("Avarias"))
+        if not df.empty:
+            secoes_saida["Avarias"] = df
+
+    if (selecionadas is None or "Uso Interno" in selecionadas) and uso_interno:
+        df = _unificar_sem_colunas_internas(uso_interno, unificar_itens_uso_interno)
+        df = filtrar_colunas(df, colunas.get("Uso Interno"))
+        if not df.empty:
+            secoes_saida["Uso Interno"] = df
+
+    if (
+        formato == "xlsx"
+        and selecionadas is not None
+        and "Erros de Análise" in selecionadas
+        and erros
+    ):
+        df_erros = pd.DataFrame(erros)
+        df_erros = filtrar_colunas(df_erros, colunas.get("Erros de Análise"))
+        if not df_erros.empty:
+            secoes_saida["Erros de Análise"] = df_erros
+
+    return secoes_saida
+
+
+def gerar_unificado_execucao(
+    run_id: int,
+    dados_por_categoria: Dict,
+    formato: str = "xlsx",
+    return_contenido: bool = False,
+    secoes: Optional[list] = None,
+    colunas: Optional[Dict] = None,
+) -> Tuple[str, int, Optional[str]]:
+    """Gera um relatório unificado (Avarias + Uso Interno) escopado a esta execução.
+
+    Com ``secoes``/``colunas``, respeita o recorte escolhido no modal (o mesmo
+    contrato da unificação do mestre). No formato txt, apenas Avarias/Uso
+    Interno entram (o compacto não comporta blocos de erro). Se a seleção não
+    produzir nenhuma linha, levanta ``ValueError`` — quem chama devolve 400 em
+    vez de gravar um arquivo vazio.
+
+    Retorna (nome_archivo, total_itens_unificados[, contenido]). O nome do
+    arquivo começa com "Relatorio_Unificado_" de propósito, para reaproveitar a
+    rota de download já existente (``download_relatorio_unificado``).
+    """
+    secoes_saida = montar_secoes_unificadas(dados_por_categoria, formato, secoes, colunas)
+
+    if formato == "txt":
+        secoes_saida = {
+            nome: df
+            for nome, df in secoes_saida.items()
+            if nome in ("Avarias", "Uso Interno")
+        }
+
+    if not secoes_saida:
+        raise ValueError("Nada para unificar: as seções selecionadas estão vazias.")
+
+    total_itens = sum(len(df) for df in secoes_saida.values())
 
     nome_arquivo = f"Relatorio_Unificado_Execucao{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{formato}"
     caminho = str(RESULTADOS_DIR / nome_arquivo)
 
-    secoes = {}
-    if not df_avarias_unif.empty:
-        secoes["Avarias"] = df_avarias_unif
-    if not df_uso_unif.empty:
-        secoes["Uso Interno"] = df_uso_unif
-
     titulo = f"RELATÓRIO UNIFICADO - EXECUÇÃO #{run_id}"
     if formato == "txt":
-        escrever_txt_compacto(caminho, titulo, secoes)
+        escrever_txt_compacto(caminho, titulo, secoes_saida)
     else:
-        escrever_xlsx(caminho, secoes or {"Sem Dados": pd.DataFrame()})
+        escrever_xlsx(caminho, secoes_saida)
 
+    contenido = None
     if return_contenido:
         contenido = (
-            renderizar_txt_compacto(titulo, secoes)
+            renderizar_txt_compacto(titulo, secoes_saida)
             if formato == "txt"
-            else renderizar_secciones_como_texto(secoes)
+            else renderizar_secciones_como_texto(secoes_saida)
         )
-        return nome_arquivo, total_itens, contenido
-    return nome_arquivo, total_itens
+    return nome_arquivo, total_itens, contenido

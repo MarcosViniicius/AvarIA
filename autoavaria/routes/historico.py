@@ -198,7 +198,12 @@ def historico_exportar(run_id, formato):
 
 @app.route("/historico/execucao/<int:run_id>/unificar", methods=["POST"])
 def historico_unificar(run_id):
-    """Gera um relatório unificado (Avarias + Uso Interno) escopado a esta execução."""
+    """Gera um relatório unificado (Avarias + Uso Interno) escopado a esta execução.
+
+    Corpo opcional: {"secoes": [...], "colunas": {secao: [colunas]}} — o mesmo
+    recorte oferecido pelo modal da tela de Relatório. "Erros de Análise" entra
+    apenas no xlsx (o TXT compacto só comporta Avarias/Uso Interno).
+    """
     execucao = db_service.obter_execucao(run_id)
     if not execucao:
         return jsonify({"success": False, "message": "Execução não encontrada"}), 404
@@ -209,9 +214,17 @@ def historico_unificar(run_id):
         return jsonify({"success": False, "message": "Formato inválido. Use 'xlsx' ou 'txt'."}), 400
 
     dados = _construir_dados_relatorio(execucao["itens"])
-    nome_arquivo, total_itens, contenido = execucao_export.gerar_unificado_execucao(
-        run_id, dados, formato, return_contenido=True
-    )
+    try:
+        nome_arquivo, total_itens, contenido = execucao_export.gerar_unificado_execucao(
+            run_id,
+            dados,
+            formato,
+            return_contenido=True,
+            secoes=data.get("secoes"),
+            colunas=data.get("colunas"),
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
 
     db_service.registrar_unificado_gerado(
         nome_arquivo=nome_arquivo,
@@ -241,7 +254,8 @@ def historico_enviar_invertexto(run_id):
     o `sanitizar` roda num lugar só — não dá para um cliente mandar texto
     arbitrário para o notepad por esta rota.
 
-    Corpo opcional: {"secoes": [...]} para restringir as seções enviadas.
+    Corpo opcional: {"secoes": [...], "colunas": {...}} para restringir o que
+    é publicado (o mesmo recorte escolhido no modal de unificação).
     """
     execucao = db_service.obter_execucao(run_id)
     if not execucao:
@@ -253,10 +267,19 @@ def historico_enviar_invertexto(run_id):
             "message": "Integração com o invertexto não configurada.",
         }), 400
 
+    data = request.get_json(silent=True) or {}
     dados = _construir_dados_relatorio(execucao["itens"])
-    _, _, contenido = execucao_export.gerar_unificado_execucao(
-        run_id, dados, "txt", return_contenido=True
-    )
+    try:
+        _, _, contenido = execucao_export.gerar_unificado_execucao(
+            run_id,
+            dados,
+            "txt",
+            return_contenido=True,
+            secoes=data.get("secoes"),
+            colunas=data.get("colunas"),
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
 
     texto = invertexto.sanitizar(contenido or "")
     sucesso, mensagem = invertexto.enviar(texto)

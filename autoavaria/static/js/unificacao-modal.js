@@ -91,7 +91,13 @@
   // ---------------------------------------------------------------------
 
   function carregarOpcoes() {
-    fetch("/api/opcoes_unificacao")
+    // No escopo de execução, as seções/colunas disponíveis são as daquela
+    // execução — não do mestre inteiro.
+    var url = "/api/opcoes_unificacao";
+    if (escopo === "execucao" && cfg.runId) {
+      url += "?run_id=" + encodeURIComponent(cfg.runId);
+    }
+    fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data || !data.secoes) return;
@@ -107,6 +113,33 @@
       document.querySelectorAll(".secao-checkbox-unificacao:checked"),
       function (c) { return c.value; }
     );
+  }
+
+  // Corpo enviado às rotas de unificação/invertexto: formato + (quando a tela
+  // oferece seleção) as seções e colunas marcadas. Antes o envio ao invertexto
+  // mandava um corpo vazio e publicava o relatório inteiro, ignorando o recorte
+  // escolhido no modal.
+  function montarCorpo() {
+    var escolhido = document.querySelector('input[name="formatoUnificacao"]:checked');
+    var formato = escolhido ? escolhido.value : "xlsx";
+
+    var corpo = { formato: formato };
+    if (cfg.comSelecao) {
+      var secoes = secoesSelecionadas();
+      if (secoes.length) {
+        corpo.secoes = secoes;
+        var porSecao = {};
+        secoes.forEach(function (secao) {
+          var colunas = Array.prototype.map.call(
+            document.querySelectorAll('.coluna-checkbox-unificacao[data-secao="' + secao + '"]:checked'),
+            function (c) { return c.value; }
+          );
+          if (colunas.length) porSecao[secao] = colunas;
+        });
+        corpo.colunas = porSecao;
+      }
+    }
+    return corpo;
   }
 
   function renderizarSecoes(secoes) {
@@ -179,25 +212,7 @@
   // ---------------------------------------------------------------------
 
   function iniciar() {
-    var escolhido = document.querySelector('input[name="formatoUnificacao"]:checked');
-    var formato = escolhido ? escolhido.value : "xlsx";
-
-    var corpo = { formato: formato };
-    if (cfg.comSelecao) {
-      var secoes = secoesSelecionadas();
-      if (secoes.length) {
-        corpo.secoes = secoes;
-        var porSecao = {};
-        secoes.forEach(function (secao) {
-          var colunas = Array.prototype.map.call(
-            document.querySelectorAll('.coluna-checkbox-unificacao[data-secao="' + secao + '"]:checked'),
-            function (c) { return c.value; }
-          );
-          if (colunas.length) porSecao[secao] = colunas;
-        });
-        corpo.colunas = porSecao;
-      }
-    }
+    var corpo = montarCorpo();
 
     mostrarEstado("unificacaoProcessando");
     var btnIniciar = el("btnIniciarUnificacao");
@@ -326,7 +341,7 @@
     fetch(apiInvertexto(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(montarCorpo()),
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, dados: j }; }); })
       .then(function (res) {
