@@ -14,7 +14,7 @@ rename do pacote, marca na UI/banco/relatórios e documentação).
 | Banco SQLite | `database/autoavaria.db` | `database/avariaia.db` |
 | Tema (localStorage) | `autoavaria-theme` | `avariaia-theme` (fallback para a antiga) |
 | Rota estática no Vercel | `/static/...` → `autoavaria/static` | `/static/...` → `avariaia/static` |
-| Repositório | `MarcosViniicius/autoavaria` | `MarcosViniicius/avariaia` |
+| Repositório | `MarcosViniicius/autoavaria` | `MarcosViniicius/AvarIA` (renomeado no GitHub; o antigo redireciona) |
 
 ## Compatibilidades mantidas (de propósito)
 
@@ -33,9 +33,8 @@ rename do pacote, marca na UI/banco/relatórios e documentação).
 
 ## Passos manuais (fora do código)
 
-1. **GitHub:** renomear o repositório para `avariaia` (o GitHub redireciona o nome
-   antigo por um tempo) e atualizar o remote local:
-   `git remote set-url origin https://github.com/<usuario>/avariaia`.
+1. **GitHub (feito):** repositório renomeado para `MarcosViniicius/AvarIA`; o remote
+   local já aponta para o endereço novo. O GitHub redireciona o nome antigo.
 2. **Vercel (opcional):** renomear o projeto no dashboard. O deploy usa `vercel.json`,
    já atualizado para `/avariaia/static/...`.
 3. **Deploy/reinício:** na próxima subida, a migração do banco roda sozinha e imprime

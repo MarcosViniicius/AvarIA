@@ -34,8 +34,8 @@ O resultado de cada execução fica registrado no histórico (SQLite), com **ver
 
 1. **Clone o repositório**
 ```bash
-git clone https://github.com/MarcosViniicius/avariaia
-cd avariaia
+git clone https://github.com/MarcosViniicius/AvarIA
+cd AvarIA
 ```
 
 2. **Crie e ative o ambiente virtual**
