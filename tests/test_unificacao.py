@@ -18,10 +18,10 @@ Dois cenários precisam ficar claros:
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.routes import unificacao as unificacao_route
-from autoavaria.services import db
-from autoavaria.services.report_editing import carregar_todas_sheets
+from avariaia import create_app
+from avariaia.routes import unificacao as unificacao_route
+from avariaia.services import db
+from avariaia.services.report_editing import carregar_todas_sheets
 
 
 @pytest.fixture(scope="module")

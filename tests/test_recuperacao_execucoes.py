@@ -5,7 +5,7 @@ vivo. No boot, qualquer uma nesse estado e orfa - e se ficar assim esconde a
 ultima execucao que realmente concluiu (bug que quebrou o envio ao invertexto).
 """
 
-from autoavaria.services import db
+from avariaia.services import db
 
 
 def _run(status="em_andamento", itens=None):

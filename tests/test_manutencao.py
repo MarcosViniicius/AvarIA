@@ -8,8 +8,8 @@ sem tocar no relatório Excel nem no Histórico.
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.routes import manutencao as manutencao_route
+from avariaia import create_app
+from avariaia.routes import manutencao as manutencao_route
 
 
 @pytest.fixture(scope="module")

@@ -20,7 +20,7 @@ import zipfile
 
 import pytest
 
-from autoavaria.services.extraction import ExtratorArquivos, nome_para_gravar
+from avariaia.services.extraction import ExtratorArquivos, nome_para_gravar
 
 
 class TestNomeParaGravar:

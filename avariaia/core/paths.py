@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-# Este arquivo é autoavaria/core/paths.py:
-#   parents[0] = core/            parents[1] = autoavaria/ (o pacote)
+# Este arquivo é avariaia/core/paths.py:
+#   parents[0] = core/            parents[1] = avariaia/ (o pacote)
 #   parents[2] = raiz do projeto  (onde vivem config/, database/, results...)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_PACKAGE_ROOT = Path(__file__).resolve().parents[1]

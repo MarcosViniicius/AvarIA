@@ -32,8 +32,8 @@ O resultado de cada execução fica registrado no histórico (SQLite), com **ver
 
 1. **Clone o repositório**
 ```bash
-git clone https://github.com/MarcosViniicius/autoavaria
-cd autoavaria
+git clone https://github.com/MarcosViniicius/avariaia
+cd avariaia
 ```
 
 2. **Crie e ative o ambiente virtual**
@@ -124,12 +124,12 @@ As configurações são salvas automaticamente no arquivo `config.json`.
 ## 📁 Estrutura do Projeto
 
 ```
-autoavaria/
+avariaia/
 ├── app.py                              # Entrypoint (Flask app + handlers p/ Vercel)
 ├── config/
 │   ├── config.json                     # Configurações (gerado automaticamente, não versionado)
 │   └── config.example.json             # Template de configuração
-├── autoavaria/
+├── avariaia/
 │   ├── routes/                         # Blueprints Flask (upload, processamento, histórico,
 │   │                                    # relatório, edição, unificação, erros/reanálise, etc.)
 │   ├── services/                       # Regras de negócio: extração (IA + código de barras),

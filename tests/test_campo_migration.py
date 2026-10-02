@@ -1,7 +1,7 @@
 """Testes dos parsers usados para migrar o campo 'Detalhes' combinado
 (formato antigo) para Peso / Marca / Código de Barras separados."""
 
-from autoavaria.services.campo_migration import (
+from avariaia.services.campo_migration import (
     _dividir_detalhes_uso_interno,
     _peso_bruto_de_detalhes,
 )

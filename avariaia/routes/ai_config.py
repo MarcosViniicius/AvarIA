@@ -29,7 +29,7 @@ def api_listar_modelos(provider):
         JSON com lista de modelos disponíveis
     """
     try:
-        from autoavaria.services.ai import AIProviderFactory
+        from avariaia.services.ai import AIProviderFactory
 
         # Normalizar nome do provedor
         provider = provider.lower()

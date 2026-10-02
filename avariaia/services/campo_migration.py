@@ -3,7 +3,7 @@ Migração única (idempotente) do campo "Detalhes" combinado (ex: "Peso: 1kg",
 "Marca: X | Cód. Barras: Y") para colunas separadas (Peso / Marca / Código de
 Barras), tanto no Excel mestre atual quanto nos itens já salvos no banco.
 
-Roda automaticamente na inicialização do app (ver autoavaria/__init__.py) e
+Roda automaticamente na inicialização do app (ver avariaia/__init__.py) e
 não faz nada se os dados já estiverem no formato novo.
 """
 

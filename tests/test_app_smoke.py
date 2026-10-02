@@ -7,7 +7,7 @@ valida conteúdo de negócio, só que nada quebrou ao montar o app.
 
 import pytest
 
-from autoavaria import create_app
+from avariaia import create_app
 
 
 @pytest.fixture(scope="module")
@@ -38,7 +38,7 @@ def test_rota_nao_quebra(client, rota):
 
 def test_download_config_nao_vaza_chave_de_api(client):
     import json
-    from autoavaria.core.paths import CONFIG_FILE
+    from avariaia.core.paths import CONFIG_FILE
 
     if not CONFIG_FILE.exists():
         pytest.skip("config/config.json não existe neste ambiente")

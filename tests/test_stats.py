@@ -6,7 +6,7 @@ de "Limpar Imagens" (que apaga os arquivos mas não mexe no log), o dashboard
 mostrava processadas > total - um número sem sentido.
 """
 
-from autoavaria.services import stats
+from avariaia.services import stats
 
 
 def test_processadas_nunca_excede_total(tmp_path, monkeypatch, tmp_db):

@@ -9,7 +9,7 @@ menores.
 
 import os
 
-from autoavaria.core.paths import (
+from avariaia.core.paths import (
     DATA_ROOT,
     UPLOAD_FOLDER as UPLOAD_FOLDER_PATH,
     ARCHIVE_FOLDER as ARCHIVE_FOLDER_PATH,

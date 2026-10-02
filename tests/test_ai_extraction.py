@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from autoavaria.services.ai_extraction import extrair_dados_de_lote, processar_resultado_arquivo
+from avariaia.services.ai_extraction import extrair_dados_de_lote, processar_resultado_arquivo
 
 
 class _ProviderFalso:
@@ -82,7 +82,7 @@ class TestExtrairDadosDeLoteParsingDeJson:
         assert resultado["IMG-boa.jpg"]["detalhes"] == "y"
 
     def test_json_invalido_apos_todas_tentativas_marca_erro(self, imagem_valida, monkeypatch):
-        import autoavaria.services.ai_extraction as ai_extraction_module
+        import avariaia.services.ai_extraction as ai_extraction_module
 
         monkeypatch.setattr(ai_extraction_module, "RETRY_DELAY_SECONDS", 0)
         provider = _ProviderFalso(resposta_texto="isso não é json")

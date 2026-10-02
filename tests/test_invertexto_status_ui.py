@@ -13,7 +13,7 @@ import re
 
 import pytest
 
-from autoavaria import create_app
+from avariaia import create_app
 
 
 @pytest.fixture(scope="module")

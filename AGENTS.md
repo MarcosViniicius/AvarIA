@@ -27,9 +27,9 @@ python -m pytest tests/test_classificacao_imagens.py tests/test_processamento_ba
 
 ```
 app.py                          → entrypoint, só create_app()
-autoavaria/__init__.py      → create_app(): logging, dirs, db.init_db, backfill, migração, catálogo, blueprints
-autoavaria/core/paths.py    → ÚNICA fonte de paths (PROJECT_ROOT, UPLOAD_FOLDER, ARCHIVE_FOLDER, RESULTADOS_DIR, DATABASE_FILE...)
-autoavaria/services/
+avariaia/__init__.py      → create_app(): logging, dirs, db.init_db, backfill, migração, catálogo, blueprints
+avariaia/core/paths.py    → ÚNICA fonte de paths (PROJECT_ROOT, UPLOAD_FOLDER, ARCHIVE_FOLDER, RESULTADOS_DIR, DATABASE_FILE...)
+avariaia/services/
   extraction.py                 → descompactação segura (zip/tar/rar/7z, anti-zip-slip, dedup por SHA256)
   barcode.py                    → leitura local EAN-13 (zxing-cpp+opencv), validação DV, etiqueta balança prefixo 2
   ai.py                         → abstração multi-provedor (Gemini/OpenAI/Claude/OpenRouter)
@@ -45,7 +45,7 @@ autoavaria/services/
   db.py                         → SQLite: processing_runs, report_items, unified_reports, token_usage, catalogo_*
   reports.py                    → GerenciadorErros (lê/grava erros no BANCO; nome legado)
   report_editing.py / relatorio_view.py / execucao_export.py / campo_migration.py / stats.py / maintenance.py / image_archive.py / app_state.py / config_service.py / optimization.py
-autoavaria/routes/         → blueprints finos: upload, processing, relatorio, historico, erros, edicao, unificacao, dashboard, manutencao, logs, configuracoes, ai_config
+avariaia/routes/         → blueprints finos: upload, processing, relatorio, historico, erros, edicao, unificacao, dashboard, manutencao, logs, configuracoes, ai_config
 ```
 
 ## 4. Regras críticas (não quebrar)

@@ -6,7 +6,7 @@ import pytest
 zxingcpp = pytest.importorskip("zxingcpp")
 cv2 = pytest.importorskip("cv2")
 
-from autoavaria.services import barcode
+from avariaia.services import barcode
 
 
 def _gerar_imagem_ean13(codigo: str, escala: int = 4):

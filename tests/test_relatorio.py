@@ -10,9 +10,9 @@ não existe nenhuma execução no banco (ex.: banco recém-criado).
 import pandas as pd
 import pytest
 
-from autoavaria import create_app
-from autoavaria.routes import relatorio as relatorio_route
-from autoavaria.services import db
+from avariaia import create_app
+from avariaia.routes import relatorio as relatorio_route
+from avariaia.services import db
 
 
 @pytest.fixture(scope="module")

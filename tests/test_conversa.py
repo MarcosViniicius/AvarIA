@@ -2,7 +2,7 @@
 
 import pytest
 
-from autoavaria.services import conversa
+from avariaia.services import conversa
 
 
 def _escrever(tmp_path, conteudo: str) -> str:

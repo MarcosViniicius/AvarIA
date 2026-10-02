@@ -11,8 +11,8 @@ import datetime as dt
 
 import pandas as pd
 
-from autoavaria.services import barcode, conversa, excel_report
-from autoavaria.services import extraction_engines as engines
+from avariaia.services import barcode, conversa, excel_report
+from avariaia.services import extraction_engines as engines
 
 
 class TestBarcodeEdgesNovos:
@@ -63,7 +63,7 @@ class TestUnificacaoCasosNovos:
     def test_produtos_diferentes_nao_agrupam(self):
         df = pd.DataFrame([("A", "1kg", 1), ("B", "1kg", 1)],
                           columns=["Produto", "Peso", "Quantidade"])
-        uni, _ = __import__("autoavaria.services.unification",
+        uni, _ = __import__("avariaia.services.unification",
                             fromlist=["unificar_itens_avarias"]).unificar_itens_avarias(df)
         assert len(uni) == 2
 
@@ -76,7 +76,7 @@ class TestExcelCasosNovos:
         assert "Sem Dados" in sheets
 
     def test_catalogo_expiracao_borda(self, tmp_db):
-        from autoavaria.services import catalogo
+        from avariaia.services import catalogo
         agora = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         assert catalogo.esta_desatualizado(agora, dias=30) is False
         assert catalogo.esta_desatualizado(None) is True

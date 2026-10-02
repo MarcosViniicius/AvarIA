@@ -16,7 +16,7 @@ from ..services import app_state
 def obter_erros_pendentes():
     """API para obter quantidade de erros pendentes."""
     try:
-        from autoavaria.services.reports import criar_gerenciador
+        from avariaia.services.reports import criar_gerenciador
 
         gerenciador = criar_gerenciador(ARQUIVO_SAIDA_EXCEL)
         resumo = gerenciador.gerar_resumo_erros()
@@ -46,7 +46,7 @@ def reanalisar_erros_api():
                     "message": "Já existe um processamento em andamento"
                 }), 400
 
-        from autoavaria.services.reports import criar_gerenciador
+        from avariaia.services.reports import criar_gerenciador
 
         # Verificar se há erros para reanalisar
         gerenciador = criar_gerenciador(ARQUIVO_SAIDA_EXCEL)
@@ -102,7 +102,7 @@ def reanalisar_erros_api():
         # Executar reanálise em thread separada
         def executar_reanalise():
             try:
-                from autoavaria.services.extraction_pipeline import reanalisar_erros
+                from avariaia.services.extraction_pipeline import reanalisar_erros
 
                 resultado = reanalisar_erros(
                     diretorio_imagens=DIRETORIO_IMAGENS,
@@ -212,7 +212,7 @@ def reanalisar_mestre_api():
 
         def executar_reanalise():
             try:
-                from autoavaria.services.extraction_pipeline import reanalisar_selecao_mestre
+                from avariaia.services.extraction_pipeline import reanalisar_selecao_mestre
 
                 resultado = reanalisar_selecao_mestre(
                     imagens=imagens, categorias=categorias,

@@ -10,8 +10,8 @@ Cobre o que importa sem depender da rede:
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.services import invertexto
+from avariaia import create_app
+from avariaia.services import invertexto
 
 
 CONTEUDO_EXEMPLO = (
@@ -99,7 +99,7 @@ class TestRota:
 
     def test_rota_existe_e_nao_aceita_texto_do_cliente(self, client, monkeypatch, tmp_db):
         """Mesmo enviando texto no corpo, o servidor regenera o conteúdo."""
-        from autoavaria.services import db
+        from avariaia.services import db
 
         capturado = {}
         monkeypatch.setattr(invertexto, "configurado", lambda: True)
@@ -126,7 +126,7 @@ class TestRota:
         assert "TOMATE" in capturado["texto"]
 
     def test_sem_configuracao_responde_400(self, client, monkeypatch, tmp_db):
-        from autoavaria.services import db
+        from avariaia.services import db
 
         monkeypatch.setattr(invertexto, "configurado", lambda: False)
         run_id = db.iniciar_execucao("processamento", imagens_total=1)

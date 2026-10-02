@@ -8,8 +8,8 @@ Gerenciamento, e a aba Dados mostra o estado real antes de oferecer ações.
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.services import resumo_dados
+from avariaia import create_app
+from avariaia.services import resumo_dados
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ class TestEstruturaDaTela:
 
 class TestResumoDados:
     def test_sem_relatorio_marca_inexistente(self, tmp_db, monkeypatch):
-        from autoavaria.core import paths
+        from avariaia.core import paths
 
         monkeypatch.setattr(resumo_dados, "ARQUIVO_SAIDA_EXCEL", paths.RESULTADOS_DIR / "nao_existe.xlsx")
         resumo = resumo_dados.obter_resumo_dados()

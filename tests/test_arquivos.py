@@ -17,7 +17,7 @@ import pytest
 @pytest.fixture
 def acervo(tmp_db, tmp_path, monkeypatch):
     """Isola banco + pastas. Devolve o módulo services.arquivos."""
-    from autoavaria.services import arquivos
+    from avariaia.services import arquivos
 
     pendentes = tmp_path / "imagens_para_analisar"
     arquivadas = tmp_path / "imagens_processadas"

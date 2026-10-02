@@ -14,14 +14,14 @@ O que este arquivo garante:
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.services import db, execucao_export, invertexto
-from autoavaria.services.report_editing import carregar_todas_sheets
+from avariaia import create_app
+from avariaia.services import db, execucao_export, invertexto
+from avariaia.services.report_editing import carregar_todas_sheets
 
 
 @pytest.fixture
 def client(tmp_db, monkeypatch):
-    from autoavaria.services import app_state
+    from avariaia.services import app_state
 
     monkeypatch.setattr(app_state, "processamento_ativo", False)
     app_state.progresso_atual = {}

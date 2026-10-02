@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from autoavaria.services.unification import (
+from avariaia.services.unification import (
     extrair_codigo_barras_de_detalhes,
     extrair_peso_de_valor,
     extrair_quantidade_de_observacao,

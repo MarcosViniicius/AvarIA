@@ -17,7 +17,7 @@ múltiplas correspondências:
 
 import pytest
 
-from autoavaria.services import db
+from avariaia.services import db
 
 
 def _item(produto, peso="1kg", categoria="Avarias", caminho="/img/foto.jpg", run_id=None):

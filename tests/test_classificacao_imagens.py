@@ -16,10 +16,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoavaria.services import catalogo, extraction_engines as engines
-from autoavaria.services import ai_extraction
-from autoavaria.services.barcode import CodigoLido
-from autoavaria.services.conversa import ContextoImagem
+from avariaia.services import catalogo, extraction_engines as engines
+from avariaia.services import ai_extraction
+from avariaia.services.barcode import CodigoLido
+from avariaia.services.conversa import ContextoImagem
 
 
 def _codigo(texto, estrategia="original"):
@@ -110,7 +110,7 @@ class TestMotorCodigoBarrasCasosNovos:
         assert res["tipo"] == "Avaria"
 
     def test_balanca_dv_quebrado_vira_erro(self, tmp_db):
-        from autoavaria.services import barcode
+        from avariaia.services import barcode
         assert barcode.interpretar_etiqueta_balanca("2001400005160") is None
         motor = engines.MotorCodigoBarras()
         with patch.object(engines.barcode, "ler_imagem", return_value=[_codigo("2001400005160")]):

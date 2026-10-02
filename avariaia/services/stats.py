@@ -1,8 +1,8 @@
 """
 Estatísticas e resultados recentes usados pelo dashboard (`/`, `/api/stats`).
 
-Importa os caminhos diretamente de ``autoavaria.core.paths`` (em vez de
-``autoavaria.routes.context``) para não criar uma dependência de services ->
+Importa os caminhos diretamente de ``avariaia.core.paths`` (em vez de
+``avariaia.routes.context``) para não criar uma dependência de services ->
 routes.
 """
 

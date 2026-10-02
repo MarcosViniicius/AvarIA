@@ -175,7 +175,7 @@ def executar_processamento_principal(modo_extracao=None, callback_progresso=None
         app_state.progresso_atual["logs"].append("🚀 Iniciando análise com IA...")
 
         # Executar a função principal do pipeline de extração
-        from autoavaria.services.extraction_pipeline import main as executar_pipeline_extracao
+        from avariaia.services.extraction_pipeline import main as executar_pipeline_extracao
 
         sucesso_pipeline = executar_pipeline_extracao(
             modo_extracao, callback_progresso=callback_progresso

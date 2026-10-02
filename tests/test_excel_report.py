@@ -9,8 +9,8 @@ import openpyxl
 import pandas as pd
 import pytest
 
-from autoavaria.services import excel_report
-from autoavaria.services.excel_report import salvar_relatorio_excel
+from avariaia.services import excel_report
+from avariaia.services.excel_report import salvar_relatorio_excel
 
 
 class TestSalvarRelatorioExcel:

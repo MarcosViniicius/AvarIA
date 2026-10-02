@@ -12,7 +12,7 @@ da migração, senão a estatística de "último processamento" passa a mentir.
 
 import pytest
 
-from autoavaria.services import db
+from avariaia.services import db
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ class TestStatsUsaBanco:
         """Sem arquivo de consumo, o total do dia sai da tabela."""
         from datetime import datetime
 
-        from autoavaria.services import stats
+        from avariaia.services import stats
 
         hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db.registrar_consumo_log(1000, "teste", hoje)

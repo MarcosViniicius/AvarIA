@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoavaria.services.ai import (
+from avariaia.services.ai import (
     AIProviderFactory,
     CAMPO_API_KEY_POR_PROVEDOR,
     ClaudeProvider,

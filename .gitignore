@@ -82,7 +82,7 @@ $RECYCLE.BIN/
 # ============================================
 
 # Configuração com API keys sensíveis. O padrão sem barra inicial casa em
-# QUALQUER nível — inclusive dentro do pacote (autoavaria/config/config.json),
+# QUALQUER nível — inclusive dentro do pacote (avariaia/config/config.json),
 # que já apareceu por engano quando paths.py apontava para o lugar errado.
 config.json
 !config/config.example.json
@@ -108,7 +108,7 @@ credentials.json
 
 # Dados gerados: ficam na raiz (ver core/paths.py), nunca dentro do pacote.
 # Sem a barra inicial, o padrão casa em qualquer nível — protege contra um
-# paths.py mal configurado voltar a despejar dados dentro de autoavaria/.
+# paths.py mal configurado voltar a despejar dados dentro de avariaia/.
 logs/
 resultados/
 !resultados/README.md
@@ -127,14 +127,14 @@ imagens_para_analisar/*
 imagens_processadas/*
 !imagens_processadas/.gitkeep
 
-# Proteção extra: dado gerado NUNCA deve viver dentro do pacote (autoavaria/).
+# Proteção extra: dado gerado NUNCA deve viver dentro do pacote (avariaia/).
 # Se um paths.py mal configurado voltar a apontar para lá, isto impede que
 # imagens e resultados sejam commitados por engano.
-autoavaria/imagens_para_analisar/
-autoavaria/imagens_processadas/
-autoavaria/logs/
-autoavaria/resultados/
-autoavaria/database/
+avariaia/imagens_para_analisar/
+avariaia/imagens_processadas/
+avariaia/logs/
+avariaia/resultados/
+avariaia/database/
 
 # Backups de relatórios
 *.xlsx.bak

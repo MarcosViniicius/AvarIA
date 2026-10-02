@@ -1,6 +1,6 @@
 """Testes da limpeza de exportações antigas (services/maintenance.py)."""
 
-from autoavaria.services import maintenance
+from avariaia.services import maintenance
 
 
 def test_mantem_apenas_os_n_mais_recentes(tmp_path, tmp_db):

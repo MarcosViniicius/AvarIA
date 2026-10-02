@@ -15,7 +15,7 @@ import pytest
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     """Redireciona o banco para um arquivo temporário e cria o schema."""
-    from autoavaria.services import db
+    from avariaia.services import db
 
     db_path = tmp_path / "teste.db"
     monkeypatch.setattr(db, "DATABASE_DIR", tmp_path)

@@ -9,7 +9,7 @@ from PIL import Image
 @pytest.fixture
 def cenario(tmp_path, tmp_db, monkeypatch):
     """Pastas de pendentes/arquivadas isoladas + log de processados falso."""
-    from autoavaria.services import arquivos, migracao_acervo
+    from avariaia.services import arquivos, migracao_acervo
 
     pendentes = tmp_path / "imagens_para_analisar"
     arquivadas = tmp_path / "imagens_processadas"
@@ -79,7 +79,7 @@ class TestMigracao:
 
     def test_imagens_continuam_abriveis_apos_migrar(self, cenario):
         """A resolução por nome original deve achar a imagem migrada."""
-        from autoavaria.services import extraction_pipeline as pipeline
+        from avariaia.services import extraction_pipeline as pipeline
 
         cenario["migracao"].migrar()
         registro = cenario["acervo"].buscar_por_nome_original("IMG-1.jpg")[0]

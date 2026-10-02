@@ -5,8 +5,8 @@ Setup, arquitetura, backend, rotas, banco, testes e deploy.
 ## 1. Setup
 
 ```bash
-git clone https://github.com/MarcosViniicius/autoavaria
-cd autoavaria
+git clone https://github.com/MarcosViniicius/avariaia
+cd avariaia
 python -m venv venv
 .\venv\Scripts\activate        # Windows | source venv/bin/activate (Linux/Mac)
 pip install -r requirements.txt
@@ -27,7 +27,7 @@ python -m pytest tests/test_barcode.py tests/test_extraction_engines.py -q
 ## 2. Arquitetura
 
 ```
-app.py → autoavaria.create_app()
+app.py → avariaia.create_app()
   core/paths.py        única fonte de paths (suporte Vercel /tmp vs local)
   core/logging.py      logging compartilhado
   core/exceptions.py   exceções
@@ -36,7 +36,7 @@ app.py → autoavaria.create_app()
   templates/ + static/ Jinja + Bootstrap, tema claro/escuro
 ```
 
-`create_app()` (`autoavaria/__init__.py:56`): settings → logging → `ensure_directories()` → `db.init_db()` → `backfill_relatorios_unificados` → `campo_migration` → `catalogo.popular_do_historico()` → blueprints → aliases → error handlers → static versioning (`mtime`) → optimizations.
+`create_app()` (`avariaia/__init__.py:56`): settings → logging → `ensure_directories()` → `db.init_db()` → `backfill_relatorios_unificados` → `campo_migration` → `catalogo.popular_do_historico()` → blueprints → aliases → error handlers → static versioning (`mtime`) → optimizations.
 
 Princípios: rotas finas, services puros, Excel = fonte de trabalho, SQLite = histórico/versionamento/catálogo, escrita única de export (`export_service.py`), unificação pura (`unification.py`).
 

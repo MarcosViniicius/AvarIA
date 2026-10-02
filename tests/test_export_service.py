@@ -8,7 +8,7 @@ services/excel_report.py), cada um com pequenas diferenças acidentais.
 import pandas as pd
 import pytest
 
-from autoavaria.services import export_service as es
+from avariaia.services import export_service as es
 
 
 class TestFiltrarColunas:

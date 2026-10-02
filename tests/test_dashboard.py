@@ -8,8 +8,8 @@ alternativa sem custo.
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.services import config_service
+from avariaia import create_app
+from avariaia.services import config_service
 
 
 @pytest.fixture(scope="module")

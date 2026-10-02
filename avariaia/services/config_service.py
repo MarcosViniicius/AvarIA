@@ -3,7 +3,7 @@ Carregador/salvador da configuração da aplicação Flask (config/config.json).
 
 Este módulo é usado pelas rotas web (configurações, processamento em
 background, etc). É diferente de
-``autoavaria.services.extraction_pipeline.carregar_configuracao``, que é a
+``avariaia.services.extraction_pipeline.carregar_configuracao``, que é a
 configuração usada exclusivamente pelo pipeline de extração via IA - as duas
 funções têm o mesmo nome mas vivem em módulos diferentes e não devem ser
 confundidas nem unificadas.

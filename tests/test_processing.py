@@ -11,7 +11,7 @@ vezes à toa a cada clique.
 
 import pytest
 
-from autoavaria.routes import processing as processing_route
+from avariaia.routes import processing as processing_route
 
 
 @pytest.fixture
@@ -65,8 +65,8 @@ class TestExtracaoNaoRepeteNoBackground:
     def test_rota_processar_passa_o_resultado_ja_calculado_para_a_thread(self, monkeypatch, tmp_path):
         """Teste de integração leve: a rota /processar não deve deixar a
         thread reextrair o que ela mesma já extraiu de forma síncrona."""
-        from autoavaria import create_app
-        from autoavaria.services import app_state
+        from avariaia import create_app
+        from avariaia.services import app_state
         monkeypatch.setattr(app_state, "processamento_ativo", False)
 
         pasta_imagens = tmp_path / "imagens"
@@ -113,8 +113,8 @@ class TestProcessarComForcar:
     def test_forcar_reprocessamento_e_repassado_para_extracao(self, monkeypatch, tmp_path):
         """Não testamos a extração real aqui (já coberta em test_extraction.py) -
         só que o parâmetro do request chega até extrair_arquivos_comprimidos."""
-        from autoavaria import create_app
-        from autoavaria.services import app_state
+        from avariaia import create_app
+        from avariaia.services import app_state
         monkeypatch.setattr(app_state, "processamento_ativo", False)
 
         pasta_imagens = tmp_path / "imagens"
@@ -149,8 +149,8 @@ class TestProcessarComForcar:
 
 
 def test_pipeline_com_falha_nao_vira_sucesso_por_dados_antigos(monkeypatch, tmp_path, tmp_db):
-    import autoavaria.services.extraction_pipeline as pipeline
-    from autoavaria.services import db
+    import avariaia.services.extraction_pipeline as pipeline
+    from avariaia.services import db
 
     # Já existe uma execução com dados no banco (estado anterior)...
     run = db.iniciar_execucao("processamento", imagens_total=1)

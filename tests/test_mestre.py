@@ -7,7 +7,7 @@ as regras de dedup e o comportamento de versionamento (reanálise).
 
 import pytest
 
-from autoavaria.services import db, mestre
+from avariaia.services import db, mestre
 
 
 def _item(produto, peso="1kg", categoria="Avarias", caminho="a.jpg",
@@ -85,7 +85,7 @@ class TestVersionamento:
         run_orig = _criar_run({"Avarias": [_item("TOMATE", "1kg", caminho="f.jpg")]})
 
         # Nova versão da MESMA linhagem (como faz reanalisar_execucao).
-        from autoavaria.services import extraction_pipeline  # noqa: F401 (garante import cedo)
+        from avariaia.services import extraction_pipeline  # noqa: F401 (garante import cedo)
         novo = db.iniciar_reanalise_de_execucao(run_orig, imagens_total=1)
         db.registrar_itens(novo, "Avarias", [_item("TOMATE CORRIGIDO", "1kg", caminho="f.jpg")])
         db.finalizar_execucao(novo, "concluido", avarias=1)

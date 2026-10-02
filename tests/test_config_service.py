@@ -2,7 +2,7 @@
 env override e defaults."""
 import json
 
-from autoavaria.services import config_service
+from avariaia.services import config_service
 
 
 def _reset_cache(monkeypatch):

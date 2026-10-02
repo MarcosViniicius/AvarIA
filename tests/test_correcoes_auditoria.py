@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.services import app_state, db
+from avariaia import create_app
+from avariaia.services import app_state, db
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ class TestSegurancaDeCaminhos:
 
 class TestProcessamentoNaoTrava:
     def test_sem_imagens_libera_o_flag(self, client, tmp_path, monkeypatch):
-        from autoavaria.routes import processing as processing_route
+        from avariaia.routes import processing as processing_route
 
         pasta_vazia = tmp_path / "imagens_vazias"
         pasta_vazia.mkdir()
@@ -99,7 +99,7 @@ class TestProcessamentoNaoTrava:
 
 class TestReanaliseSemDuplicar:
     def test_item_sem_imagem_preservado_uma_vez_e_contado(self, tmp_db, tmp_path, monkeypatch):
-        from autoavaria.services import extraction_pipeline as pipeline
+        from avariaia.services import extraction_pipeline as pipeline
 
         run_id = db.iniciar_execucao("processamento", imagens_total=2)
         (tmp_path / "ok.jpg").write_bytes(b"x")  # precisa existir para a reanálise
@@ -158,7 +158,7 @@ class TestQuantidadeComG:
         ("3 grupos", None),  # "g" de outra palavra não é grama
     ])
     def test_extrai_quantidade_sem_falso_positivo_de_peso(self, texto, esperado):
-        from autoavaria.services.conversa import extrair_quantidade
+        from avariaia.services.conversa import extrair_quantidade
 
         assert extrair_quantidade(texto) == esperado
 
@@ -170,7 +170,7 @@ class TestQuantidadeComG:
 
 class TestMestreDedupPorCategoria:
     def test_mesma_imagem_em_categorias_diferentes_nao_colide(self, tmp_db):
-        from autoavaria.services import mestre
+        from avariaia.services import mestre
 
         run_id = db.iniciar_execucao("processamento", imagens_total=1)
         db.registrar_itens(run_id, "Avarias", [
@@ -196,7 +196,7 @@ class TestMestreDedupPorCategoria:
 
 class TestSegredosMascarados:
     def test_config_sem_chaves_mascara_token_do_invertexto(self):
-        from autoavaria.routes.configuracoes import _config_sem_chaves
+        from avariaia.routes.configuracoes import _config_sem_chaves
 
         saida = _config_sem_chaves({
             "api": {"gemini_api_key": "AIzaSySEGREDO"},
@@ -208,7 +208,7 @@ class TestSegredosMascarados:
         assert saida["invertexto"]["url"] == "https://exemplo"
 
     def test_mensagem_de_config_nao_expoe_prefixo_da_chave(self, monkeypatch):
-        from autoavaria.services import config_service
+        from avariaia.services import config_service
 
         monkeypatch.setattr(config_service, "carregar_configuracao", lambda: {
             "api": {"provider": "gemini", "gemini_api_key": "AIzaSySEGREDO123456"},
@@ -234,7 +234,7 @@ class TestNomeDeUpload:
         ("a b.JPG", "a_b.jpg"),
     ])
     def test_preserva_extensao_em_nomes_nao_ascii(self, entrada, esperado):
-        from autoavaria.routes.upload import _nome_original_seguro
+        from avariaia.routes.upload import _nome_original_seguro
 
         assert _nome_original_seguro(entrada) == esperado
 
@@ -246,7 +246,7 @@ class TestNomeDeUpload:
 
 @pytest.fixture
 def pastas_acervo(tmp_path, monkeypatch):
-    from autoavaria.services import arquivos
+    from avariaia.services import arquivos
 
     pendentes = tmp_path / "pendentes"
     arquivadas = tmp_path / "arquivadas"
@@ -259,7 +259,7 @@ def pastas_acervo(tmp_path, monkeypatch):
 
 class TestAcervoFantasma:
     def test_reenvio_nao_e_bloqueado_por_registro_orfao(self, pastas_acervo, tmp_db):
-        from autoavaria.services import arquivos
+        from avariaia.services import arquivos
 
         primeiro = arquivos.registrar("IMG-1.jpg", dados=b"conteudo")
         assert primeiro is not None
@@ -273,13 +273,13 @@ class TestAcervoFantasma:
         assert (pastas_acervo["pendentes"] / segundo["nome_fisico"]).exists()
 
     def test_agrupamento_por_hash_continua_quando_o_fisico_existe(self, pastas_acervo, tmp_db):
-        from autoavaria.services import arquivos
+        from avariaia.services import arquivos
 
         assert arquivos.registrar("IMG-1.jpg", dados=b"conteudo") is not None
         assert arquivos.registrar("IMG-1.jpg", dados=b"conteudo") is None
 
     def test_limpar_por_pasta_preserva_arquivadas(self, pastas_acervo, tmp_db):
-        from autoavaria.services import arquivos
+        from avariaia.services import arquivos
 
         arquivos.registrar("A.jpg", dados=b"a")
         arquivos.registrar("B.jpg", dados=b"b", pasta=arquivos.PASTA_ARQUIVADAS)
@@ -291,8 +291,8 @@ class TestAcervoFantasma:
         assert arquivos.listar() == []
 
     def test_limpar_dados_imagens_limpa_o_acervo(self, client, tmp_path, monkeypatch):
-        from autoavaria.routes import manutencao
-        from autoavaria.services import arquivos
+        from avariaia.routes import manutencao
+        from avariaia.services import arquivos
 
         pendentes = tmp_path / "pendentes"
         arquivadas = tmp_path / "arquivadas"
@@ -350,24 +350,24 @@ class TestEdicaoNaoEngoleErro:
 
 class TestFrontendSemRegressao:
     def test_editar_dados_sem_onclick_inline_no_botao_salvar(self):
-        fonte = Path("autoavaria/static/js/editar_dados.js").read_text(encoding="utf-8")
+        fonte = Path("avariaia/static/js/editar_dados.js").read_text(encoding="utf-8")
         # O onclick inline coexistia com o handler delegado e disparava dois POSTs.
         assert 'setAttribute("onclick", "salvarNovaLinha()")' not in fonte
         assert 'setAttribute("onclick", "salvarEdicaoCompleta()")' not in fonte
         assert "currentLineId !== null" in fonte  # delegação decide pelo estado
 
     def test_upload_le_o_campo_certo_de_duplicados(self):
-        fonte = Path("autoavaria/static/js/pages/upload.js").read_text(encoding="utf-8")
+        fonte = Path("avariaia/static/js/pages/upload.js").read_text(encoding="utf-8")
         assert "data.ignorados_duplicados" in fonte
         assert "data.rejeitados" not in fonte
 
     def test_logs_escapa_antes_do_innerhtml(self):
-        fonte = Path("autoavaria/static/js/pages/logs.js").read_text(encoding="utf-8")
+        fonte = Path("avariaia/static/js/pages/logs.js").read_text(encoding="utf-8")
         assert "escapeHtml(texto)" in fonte
         assert "escapeHtml(timestamp)" in fonte
 
     def test_relatorio_sem_clones_de_linha(self):
-        fonte = Path("autoavaria/static/js/relatorio.min.js").read_text(encoding="utf-8")
+        fonte = Path("avariaia/static/js/relatorio.min.js").read_text(encoding="utf-8")
         # O virtual scroll anterior trocava as linhas por clones, matando os
         # listeners (Editar/Excluir) e escondendo os checkboxes da reanálise.
         assert "cloneNode" not in fonte
@@ -376,7 +376,7 @@ class TestFrontendSemRegressao:
         assert "function ordenarTabela" in fonte
 
     def test_relatorio_acoes_botoes_ligados(self):
-        fonte = Path("autoavaria/static/js/relatorio-acoes.js").read_text(encoding="utf-8")
+        fonte = Path("avariaia/static/js/relatorio-acoes.js").read_text(encoding="utf-8")
         assert "exportarTabelaCSV" in fonte
         assert "imprimirTabela" in fonte
         assert "refreshBtn" in fonte

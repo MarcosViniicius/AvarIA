@@ -21,9 +21,9 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from autoavaria.services.extraction import nome_para_gravar
-from autoavaria.services.execucao_export import _unificar_sem_colunas_internas
-from autoavaria.services.unification import (
+from avariaia.services.extraction import nome_para_gravar
+from avariaia.services.execucao_export import _unificar_sem_colunas_internas
+from avariaia.services.unification import (
     unificar_itens_avarias,
     unificar_itens_uso_interno,
 )

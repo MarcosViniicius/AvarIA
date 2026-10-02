@@ -22,9 +22,9 @@ from PIL import Image
 
 @pytest.fixture
 def cenario(tmp_path, tmp_db, monkeypatch):
-    from autoavaria.services import arquivos
-    from autoavaria.services import extraction_pipeline as pipeline
-    from autoavaria.services import image_archive
+    from avariaia.services import arquivos
+    from avariaia.services import extraction_pipeline as pipeline
+    from avariaia.services import image_archive
 
     pendentes = tmp_path / "imagens_para_analisar"
     arquivadas = tmp_path / "imagens_processadas"
@@ -109,9 +109,9 @@ class TestRotaImagem:
     def test_serve_imagem_do_acervo_pelo_nome_original(self, tmp_path, tmp_db, monkeypatch):
         """Bug real: `/imagem/<nome>` dava 404 em toda imagem migrada, porque
         procurava o nome no disco e o físico é opaco."""
-        from autoavaria import create_app
-        from autoavaria.services import arquivos
-        from autoavaria.routes import relatorio as relatorio_route
+        from avariaia import create_app
+        from avariaia.services import arquivos
+        from avariaia.routes import relatorio as relatorio_route
 
         pendentes = tmp_path / "pendentes"
         arquivadas = tmp_path / "arquivadas"
@@ -138,9 +138,9 @@ class TestRotaImagem:
         assert resposta.data == dados
 
     def test_nome_inexistente_da_404(self, tmp_path, tmp_db, monkeypatch):
-        from autoavaria import create_app
-        from autoavaria.services import arquivos
-        from autoavaria.routes import relatorio as relatorio_route
+        from avariaia import create_app
+        from avariaia.services import arquivos
+        from avariaia.routes import relatorio as relatorio_route
 
         pendentes = tmp_path / "pendentes"
         arquivadas = tmp_path / "arquivadas"

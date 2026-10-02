@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from autoavaria import create_app
+from avariaia import create_app
 
 
 @pytest.fixture(scope="module")
@@ -35,7 +35,7 @@ class TestHistoricoReanalisar:
         assert resposta.status_code == 404
 
     def test_bloqueia_se_ja_ha_processamento_ativo(self, client, tmp_db, monkeypatch):
-        from autoavaria.services import app_state
+        from avariaia.services import app_state
 
         run_id = tmp_db.iniciar_execucao("processamento")
         tmp_db.finalizar_execucao(run_id, "concluido")
@@ -46,7 +46,7 @@ class TestHistoricoReanalisar:
         assert corpo["success"] is False
 
     def test_reanalise_da_versao_mais_recente_inicia_com_sucesso(self, client, tmp_db, monkeypatch):
-        from autoavaria.services import app_state
+        from avariaia.services import app_state
 
         run_id = tmp_db.iniciar_execucao("processamento")
         tmp_db.finalizar_execucao(run_id, "concluido")
@@ -61,7 +61,7 @@ class TestHistoricoReanalisar:
             return {"sucesso": True, "run_id": rid + 100, "total_arquivos": 0, "avarias": 0, "uso_interno": 0, "erros": 0}
 
         monkeypatch.setattr(
-            "autoavaria.services.extraction_pipeline.reanalisar_execucao", fake_reanalisar_execucao
+            "avariaia.services.extraction_pipeline.reanalisar_execucao", fake_reanalisar_execucao
         )
 
         resposta = client.post(f"/historico/execucao/{run_id}/reanalisar")
@@ -75,7 +75,7 @@ class TestHistoricoReanalisar:
 
     def test_reanalisar_com_filtro_repassa_categorias_e_ids(self, client, tmp_db, monkeypatch):
         """Reanálise seletiva: a rota repassa categorias/item_ids ao pipeline."""
-        from autoavaria.services import app_state
+        from avariaia.services import app_state
 
         run_id = tmp_db.iniciar_execucao("processamento")
         tmp_db.finalizar_execucao(run_id, "concluido")
@@ -89,7 +89,7 @@ class TestHistoricoReanalisar:
             return {"sucesso": True, "run_id": rid + 100}
 
         monkeypatch.setattr(
-            "autoavaria.services.extraction_pipeline.reanalisar_execucao", fake_reanalisar_execucao
+            "avariaia.services.extraction_pipeline.reanalisar_execucao", fake_reanalisar_execucao
         )
 
         resposta = client.post(
@@ -102,7 +102,7 @@ class TestHistoricoReanalisar:
         assert chamadas["item_ids"] == [7]
 
     def test_reanalisar_com_categoria_invalida_retorna_400(self, client, tmp_db, monkeypatch):
-        from autoavaria.services import app_state
+        from avariaia.services import app_state
 
         run_id = tmp_db.iniciar_execucao("processamento")
         tmp_db.finalizar_execucao(run_id, "concluido")

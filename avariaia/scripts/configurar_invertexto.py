@@ -10,9 +10,9 @@ notepad) e vem embutido no HTML público da página. Gerar um aqui seria
 recusado pelo serviço. Este script lê o valor real e persiste.
 
 Uso:
-    python -m autoavaria.scripts.configurar_invertexto
-    python -m autoavaria.scripts.configurar_invertexto --url https://www.invertexto.com/outro
-    python -m autoavaria.scripts.configurar_invertexto --token TOKEN --url URL
+    python -m avariaia.scripts.configurar_invertexto
+    python -m avariaia.scripts.configurar_invertexto --url https://www.invertexto.com/outro
+    python -m avariaia.scripts.configurar_invertexto --token TOKEN --url URL
 
 Também é chamado automaticamente no primeiro boot (ver create_app), de forma
 silenciosa e tolerante a falha: se não houver internet, o app sobe normal e a

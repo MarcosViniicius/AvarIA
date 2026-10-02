@@ -2,7 +2,7 @@
 
 import pytest
 
-from autoavaria.services import catalogo, db
+from avariaia.services import catalogo, db
 
 
 class TestRegistrarEBuscar:

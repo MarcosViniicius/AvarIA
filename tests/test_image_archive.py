@@ -5,7 +5,7 @@ import io
 
 from PIL import Image
 
-from autoavaria.services.image_archive import arquivar_imagem
+from avariaia.services.image_archive import arquivar_imagem
 
 
 def _criar_jpeg(caminho, tamanho=(2000, 1200)):
@@ -76,7 +76,7 @@ class TestArquivarImagem:
         assert caminho_destino.read_bytes() == b"isto nao e uma imagem valida"
 
     def test_destino_default_e_archive_folder(self, tmp_path, monkeypatch):
-        from autoavaria.services import image_archive
+        from avariaia.services import image_archive
 
         origem = tmp_path / "origem"
         archive = tmp_path / "imagens_processadas"

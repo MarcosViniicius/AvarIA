@@ -16,7 +16,7 @@ import re
 
 import pytest
 
-from autoavaria import create_app
+from avariaia import create_app
 
 PAGINAS = [
     "/", "/upload", "/relatorio", "/historico", "/configuracoes",

@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-import autoavaria.services.extraction_pipeline as pipeline
+import avariaia.services.extraction_pipeline as pipeline
 
 
 class _ProviderFalso:
@@ -505,7 +505,7 @@ class TestCarregarLogs:
 
     def test_une_banco_e_arquivo(self, tmp_path, monkeypatch, tmp_db):
         """A união é o ponto: não pode reanalisar algo que está só numa das fontes."""
-        from autoavaria.services import db
+        from avariaia.services import db
 
         db.registrar_arquivo_processado("IMG-do-banco.jpg")
         log = tmp_path / "log.txt"
@@ -517,7 +517,7 @@ class TestCarregarLogs:
         assert "IMG-do-arquivo.jpg" in resultado
 
     def test_registrar_log_grava_nas_duas_fontes(self, tmp_path, monkeypatch, tmp_db):
-        from autoavaria.services import db
+        from avariaia.services import db
 
         log = tmp_path / "log.txt"
         monkeypatch.setattr(pipeline, "LOG_PROCESSADOS_FILE", log)
@@ -655,7 +655,7 @@ class TestReanalisarExecucao:
 
         # A visão mestre mostra só a versão mais recente da linhagem: as duas
         # linhas reanalisadas substituem as antigas (2 linhas, não 4).
-        from autoavaria.services import mestre
+        from avariaia.services import mestre
 
         produtos = sorted(
             linha["Produto"] for linha in mestre.obter_secoes_mestre()["Avarias"]["dados"]

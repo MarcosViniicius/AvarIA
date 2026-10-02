@@ -15,8 +15,8 @@ import io
 
 import pytest
 
-from autoavaria import create_app
-from autoavaria.routes import upload as upload_route
+from avariaia import create_app
+from avariaia.routes import upload as upload_route
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +28,7 @@ def app():
 
 @pytest.fixture
 def client(app, tmp_path, tmp_path_factory, monkeypatch, tmp_db):
-    from autoavaria.services import arquivos
+    from avariaia.services import arquivos
 
     pendentes = tmp_path / "pendentes"
     arquivadas = tmp_path_factory.mktemp("arquivadas")

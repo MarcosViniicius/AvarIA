@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from autoavaria.services import extraction_pipeline as pipeline
+from avariaia.services import extraction_pipeline as pipeline
 
 
 class _ProviderFalso:
@@ -114,7 +114,7 @@ class TestReanalisarExecucaoSeletiva:
         assert "BOA.jpg-NOVO" in produtos  # reanalisou a avaria, não o erro
 
     def test_mestre_troca_so_linha_selecionada(self, execucao_mista):
-        from autoavaria.services import mestre
+        from avariaia.services import mestre
 
         pipeline.reanalisar_execucao(execucao_mista["run_id"], categorias=["Erros de Análise"])
         secoes = mestre.obter_secoes_mestre()
@@ -173,8 +173,8 @@ class TestRotaReanalisarMestre:
         import sys
         from pathlib import Path
         # app isolado sem tocar no DB real: tmp_db já redirecionou
-        from autoavaria import create_app
-        from autoavaria.services import app_state
+        from avariaia import create_app
+        from avariaia.services import app_state
         monkeypatch.setattr(app_state, "processamento_ativo", False)
         app_state.progresso_atual = {}
         return create_app().test_client()
@@ -190,13 +190,13 @@ class TestRotaReanalisarMestre:
 
     def test_inicia_com_sucesso(self, client, monkeypatch):
         import time
-        from autoavaria.services import app_state
+        from avariaia.services import app_state
 
         def fake(imagens=None, categorias=None, **kw):
             return {"sucesso": True, "total_arquivos": 1, "corrigidos": 1, "ainda_com_erro": 0}
 
         monkeypatch.setattr(
-            "autoavaria.services.extraction_pipeline.reanalisar_selecao_mestre", fake)
+            "avariaia.services.extraction_pipeline.reanalisar_selecao_mestre", fake)
         r = client.post("/api/reanalisar_mestre", json={"imagens": ["A.jpg"]})
         assert r.get_json()["success"] is True
         time.sleep(0.3)

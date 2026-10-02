@@ -7,7 +7,7 @@ Cobre principalmente a regressão do "Código de Barras" virando float
 import pandas as pd
 import pytest
 
-from autoavaria.services.report_editing import (
+from avariaia.services.report_editing import (
     carregar_todas_sheets,
     fazer_backup,
     salvar_todas_sheets,
@@ -106,7 +106,7 @@ def test_fazer_backup_sem_arquivo_nao_falha(tmp_path):
 
 class TestRemoverLinhasPorCaminhoImagem:
     def test_remove_linhas_das_imagens_informadas(self):
-        from autoavaria.services.report_editing import remover_linhas_por_caminho_imagem
+        from avariaia.services.report_editing import remover_linhas_por_caminho_imagem
 
         sheets = {
             "Avarias": pd.DataFrame(
@@ -117,21 +117,21 @@ class TestRemoverLinhasPorCaminhoImagem:
         assert list(resultado["Avarias"]["Produto"]) == ["Alface"]
 
     def test_sheet_sem_coluna_caminho_imagem_fica_intacta(self):
-        from autoavaria.services.report_editing import remover_linhas_por_caminho_imagem
+        from avariaia.services.report_editing import remover_linhas_por_caminho_imagem
 
         sheets = {"Outra": pd.DataFrame({"Coisa": [1, 2]})}
         resultado = remover_linhas_por_caminho_imagem(sheets, {"/a/IMG-1.jpg"})
         assert list(resultado["Outra"]["Coisa"]) == [1, 2]
 
     def test_sheet_vazia_fica_intacta(self):
-        from autoavaria.services.report_editing import remover_linhas_por_caminho_imagem
+        from avariaia.services.report_editing import remover_linhas_por_caminho_imagem
 
         sheets = {"Avarias": pd.DataFrame(columns=["Produto", "Caminho da Imagem"])}
         resultado = remover_linhas_por_caminho_imagem(sheets, {"/a/IMG-1.jpg"})
         assert resultado["Avarias"].empty
 
     def test_nenhum_caminho_correspondente_mantem_todas_as_linhas(self):
-        from autoavaria.services.report_editing import remover_linhas_por_caminho_imagem
+        from avariaia.services.report_editing import remover_linhas_por_caminho_imagem
 
         sheets = {"Avarias": pd.DataFrame({"Produto": ["Tomate"], "Caminho da Imagem": ["/a/IMG-9.jpg"]})}
         resultado = remover_linhas_por_caminho_imagem(sheets, {"/a/IMG-1.jpg"})

@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autoavaria.services import catalogo, db, extraction_engines as engines
-from autoavaria.services.barcode import CodigoLido
-from autoavaria.services.conversa import ContextoImagem
+from avariaia.services import catalogo, db, extraction_engines as engines
+from avariaia.services.barcode import CodigoLido
+from avariaia.services.conversa import ContextoImagem
 
 
 def _codigo(texto, estrategia="original"):
